@@ -14,6 +14,7 @@ which this project only reads from.
 This is an ongoing effort. Improvements and updates to the Viewer are implemented on a regular basis.
 
 Author: Jun Meng
+
 July 2 2026
 
 ---
@@ -109,7 +110,7 @@ wrangler --version                       # confirm
 
 # 2. Cloudflare credentials (token from: My Profile -> API Tokens -> "Cloudflare Pages: Edit")
 cat > ~/.cloudflare_env <<'EOF'
-export CLOUDFLARE_API_TOKEN=********
+export CLOUDFLARE_API_TOKEN=********     # contact Jun Meng for the API_TOKEN and ACCOUNT_ID
 export CLOUDFLARE_ACCOUNT_ID=********
 EOF
 chmod 600 ~/.cloudflare_env              # keep the token private; never commit it
