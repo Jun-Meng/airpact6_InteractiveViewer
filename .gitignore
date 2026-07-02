@@ -1,0 +1,19 @@
+# generated data / artifacts
+web_out/
+*.bin
+*.nc
+*.tif
+*.gpkg
+forecast_*.html          # embedded per-cycle files (large, regenerated)
+# logs
+logs/
+*.log
+*.err
+# secrets — never commit
+.cloudflare_env
+*token*
+*secret*
+# python / conda cruft
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
