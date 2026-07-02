@@ -4,7 +4,7 @@
 #
 # Runs after the daily AIRPACT/CMAQ forecast finishes on Kamiak:
 #   1. post-process the surface ACONC (O3) + AELMO (PM25) files
-#   2. publish the web artifacts to the public host
+#   2. publish the web artifacts to the public host (not complete in this script,currently using a separate script: publish_cloudflare.sh)
 #
 # Wire it in as the last step of the forecast SLURM chain
 # (sbatch --dependency=afterok:<forecast_jobid> run_post.sh)
