@@ -2,7 +2,7 @@
 
 An interactive web map of the AIRPACT-6 air quality forecast (PM2.5 and ozone)
 for the Pacific Northwest, updated automatically every day from CMAQ output on
-the WSU Kamiak HPC.
+the WSU Kamiak HPC. 
 
 **Live site:** https://nw-air-forecast.pages.dev/
 
@@ -10,6 +10,11 @@ This repository is the **visualization pipeline**: it turns the operational
 CMAQ forecast into web artifacts and publishes them. It does not run the
 forecast itself — that is the separate operational pipeline (owned by Priom),
 which this project only reads from.
+
+This is an ongoing effort. Improvements and updates to the Viewer are implemented on a regular basis.
+
+Author: Jun Meng
+July 2 2026
 
 ---
 
@@ -223,5 +228,5 @@ scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflar
 
 ## Contacts
 
-- Visualization pipeline: Jun Meng (jmeng)
+- Visualization pipeline: Jun Meng
 - Operational AIRPACT-6 forecast: Priom Zarrah
