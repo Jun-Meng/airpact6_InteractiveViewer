@@ -218,6 +218,7 @@ scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflar
 
 **Placeholder / not yet real:**
 - Monitor-site overlay uses **synthetic** points — wire it to live AirNow observations.
+- Querying forecast data retrospectively
 
 **Ideas:**
 - Fire overlays (BlueSky / HMS perimeters), tribal lands, Class I areas.
@@ -230,4 +231,4 @@ scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflar
 ## Contacts
 
 - Visualization pipeline: Jun Meng
-- Operational AIRPACT-6 forecast: Priom Zarrah
+- Operational AIRPACT-6 forecast pipeline: Priom Zarrah
