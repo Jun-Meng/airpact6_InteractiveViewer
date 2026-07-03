@@ -6,7 +6,9 @@
 #SBATCH --mem=8G
 #SBATCH --output=/data/project/airpact/jmeng/Visualization/logs/ap6_postpub_%j.log
 # ============================================================
-# postprocess_and_publish.sh — final step of the AIRPACT-6 daily pipeline.
+# postprocess_and_publish.sh — final step of the AIRPACT-6 daily air quality forecast pipeline.
+# 
+# This pipeline is currently submitted by jun.meng - July 2 2026
 #
 # Orchestrates the two working scripts, in order:
 #   1) run_post.sh          -> web_out/<cycle>/ (manifest, bins, COGs, daily)
