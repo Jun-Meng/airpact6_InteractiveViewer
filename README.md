@@ -9,13 +9,14 @@ the WSU Kamiak HPC.
 This repository is the **visualization pipeline**: it turns the operational
 CMAQ forecast into web graphics and publishes them. It does not run the
 forecast itself — that is the separate operational pipeline (owned by Priom),
-which this project only reads from.
+which this project only reads from. This visualization pipeline was launched on July 2 2026,
+and it automated the first forecast cycle on July 3 2026. 
 
 This is an ongoing effort. Improvements and updates to the Viewer are implemented on a regular basis.
 
 Author: Jun Meng
 
-July 2 2026
+July 3 2026
 
 ---
 
