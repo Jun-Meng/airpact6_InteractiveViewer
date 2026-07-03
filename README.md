@@ -7,7 +7,7 @@ the WSU Kamiak HPC.
 **Live site:** https://nw-air-forecast.pages.dev/
 
 This repository is the **visualization pipeline**: it turns the operational
-CMAQ forecast into web artifacts and publishes them. It does not run the
+CMAQ forecast into web graphics and publishes them. It does not run the
 forecast itself — that is the separate operational pipeline (owned by Priom),
 which this project only reads from.
 
@@ -30,16 +30,15 @@ Every day, after the AIRPACT-6 forecast finishes, this pipeline:
 5. publishes it to Cloudflare Pages, where the interactive viewer serves it.
 
 The viewer offers a 72-hour hourly animation, a Daily AQI view, AQI-category or
-raw-concentration coloring (PM2.5 uses the AIRPACT banded scale), click-to-query
-readouts, and state/county overlays. It renders entirely client-side from static
-files — no map server required.
+raw-concentration coloring (PM2.5 uses the AIRPACT5 banded scale: https://airpact.wsu.edu/map.html?v=0.005), click-to-query
+readouts, and state/county overlays.
 
 ---
 
 ## Architecture / daily flow
 
 ```
-  Priom's operational pipeline (runs as priom)          This pipeline (runs as jmeng)
+  Priom's operational pipeline (runs as priom)          This pipeline (runs as jun.meng)
   --------------------------------------------          -----------------------------
   watcher (22:30) -> CMAQ -> postproc_3day.sh                 viz_watcher_daily.sh (07:00)
         writes:                                                     polls for completed cycle
@@ -53,11 +52,11 @@ files — no map server required.
                                                               https://nw-air-forecast.pages.dev/
 ```
 
-**Ownership boundary (important):** the two halves run as two different users.
+**Operation Strategy (important):** the two halves run as two different users.
 Priom's pipeline writes `AP6_outputs`; this pipeline only *reads* it. This
 pipeline writes `web_out/` and owns the Cloudflare account. Neither user writes
-into the other's space. That is why publishing is driven by our own polling
-watcher rather than by a job submitted from Priom's pipeline — a job Priom
+into the other's space. That is why publishing is driven by this polling
+watcher (viz_watcher_daily) rather than by a job submitted from Priom's pipeline — a job Priom
 submits would run as Priom and could not reach our env, token, or `web_out`.
 
 ---
