@@ -640,16 +640,19 @@ function siteClick(s){
   const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
   const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
   const when=o.utc?esc(o.utc.replace('T',' '))+'Z':'';
-  let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} observed</span></div>
-    <p class="pop-t" style="margin:6px 0 0">AirNow ${when}${aqi>=0?` &middot; AQI ${aqi}`:''}</p>`;
+  let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
+    <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}</p>`;
   if(view==='hourly'){ const model=DATA.valueAt(species,hour,s.lon,s.lat);
-    if(isFinite(model)) detail+=`<p class="pop-t" style="margin:2px 0 0">model ${model.toFixed(species==='pm'?1:0)} ${DATA.units(species)}</p>`; }
+    if(isFinite(model)) detail+=`<p class="pop-t" style="margin:2px 0 0">AIRPACT6 model ${model.toFixed(species==='pm'?1:0)} ${DATA.units(species)}</p>`; }
   new maplibregl.Popup({offset:12,closeButton:false}).setLngLat([s.lon,s.lat]).setHTML(
     `<p class="pop-t">${esc(s.name)}</p>${detail}${cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''}`).addTo(map);
 }
 function recolorMonitors(){
   monMarkers.forEach(mk=>{const o=mk.site[species],aqi=obsAQI(o);
-    mk.el.style.background=aqi>=0?rgb(rampColor(aqi)):'#888';
+    let col=null; // match the raster layer's color mode: obs concentration vs obs AQI
+    if(o&&colorMode==='conc'&&isFinite(+o.v)) col=concColor(species,+o.v);
+    else if(aqi>=0) col=rampColor(aqi);
+    mk.el.style.background=col?rgb(col):'#888';
     mk.el.style.display=(show.monitors&&o)?'block':'none';});
 }
 
