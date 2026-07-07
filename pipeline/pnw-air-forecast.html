@@ -639,7 +639,8 @@ function siteClick(s){
   const o=s[species]; if(!o)return;
   const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
   const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
-  const when=o.utc?esc(o.utc.replace('T',' '))+'Z':'';
+  const when=o.utc?new Date(o.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
+    month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
   let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
     <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}</p>`;
   if(view==='hourly'){ const model=DATA.valueAt(species,hour,s.lon,s.lat);
