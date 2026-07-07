@@ -107,7 +107,9 @@ echo "[$(date)] published cycle $CYCLE -> https://$PROJECT.pages.dev/"
 #
 # 5) AirNow observations (monitor-site overlay). Get a free API key at
 #    https://docs.airnowapi.org (Sign up), then store it as a Pages secret
-#    (one time, after the project exists):
+#    (one time, after the project exists). Keep AIRNOW_API_KEY literally —
+#    it is the secret's NAME; wrangler prompts "Enter a secret value:" and
+#    that prompt is where you paste the actual key:
 #       wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
 #    Until the secret is set, /api/obs returns 503 and the viewer shows the
 #    monitor toggle greyed out ("obs unavailable").

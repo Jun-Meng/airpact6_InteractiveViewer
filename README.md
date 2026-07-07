@@ -120,7 +120,9 @@ chmod 600 ~/.cloudflare_env              # keep the token private; never commit 
 mkdir -p /data/project/airpact/jmeng/Visualization/logs
 
 # 4. AirNow API key (monitor-site observations; free account at https://docs.airnowapi.org)
-#    stored as a Cloudflare Pages secret — run once after the project exists:
+#    Run this once after the project exists (keep AIRNOW_API_KEY literally — it is
+#    the secret's *name*); wrangler then prompts "Enter a secret value:" and THAT
+#    is where you paste the key you got from AirNow:
 wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
 ```
 
