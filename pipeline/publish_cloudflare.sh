@@ -17,6 +17,7 @@ PROJECT="nw-air-forecast"                                                   # ED
 PROD_BRANCH="main"                                                          # EDIT production branch
 STAGE_ROOT="/data/project/airpact/jmeng/Visualization/web_out"             # EDIT parent of web_out/<cycle>
 VIEWER="/data/project/airpact/jmeng/Visualization/pipeline/pnw-air-forecast.html"  # EDIT viewer template
+FUNCTIONS="/data/project/airpact/jmeng/Visualization/pipeline/functions"    # EDIT Pages Functions (AirNow proxy)
 INCLUDE_COGS=0                                                              # 1 to also publish .tif downloads
 
 # ---- credentials (cron has a bare environment, so source them from a file) ----
@@ -38,9 +39,12 @@ SRC="$STAGE_ROOT/$CYCLE"
 test -f "$SRC/manifest.json" || { echo "no manifest.json in $SRC" >&2; exit 1; }
 echo "[$(date)] publishing cycle $CYCLE from $SRC"
 
-# ---- assemble the site directory ----
-SITE="$(mktemp -d)"
-trap 'rm -rf "$SITE"' EXIT
+# ---- assemble the project directory ----
+# Layout required by wrangler for Functions:  <root>/functions/  next to the
+# static dir (NOT inside it); we deploy <root>/public as the assets.
+ROOT="$(mktemp -d)"
+trap 'rm -rf "$ROOT"' EXIT
+SITE="$ROOT/public"
 mkdir -p "$SITE/data/latest"
 
 # viewer -> index.html, pointed at the relative data path (same-origin, no CORS)
@@ -50,6 +54,11 @@ sed 's#const DATA_URL = "";#const DATA_URL = "data/latest/manifest.json";#' \
 # data: manifest + packed binaries (the viewer needs these)
 cp "$SRC/manifest.json" "$SRC"/*.bin "$SITE/data/latest/"
 [ "$INCLUDE_COGS" = "1" ] && cp "$SRC"/*.tif "$SITE/data/latest/" 2>/dev/null || true
+
+# Pages Functions (AirNow obs proxy -> /api/obs). Needs the AIRNOW_API_KEY
+# project secret; without it the endpoint returns 503 and the viewer just
+# greys out the monitor layer.
+[ -d "$FUNCTIONS" ] && cp -r "$FUNCTIONS" "$ROOT/functions"
 
 # cache headers (Pages honors _headers). The page and manifest keep the same
 # filename every cycle, so they must revalidate; the binaries are cycle-dated
@@ -66,6 +75,8 @@ HDR
 echo "  site assembled: $(du -sh "$SITE" | cut -f1)"
 
 # ---- deploy (first run auto-creates the project) ----
+# run from $ROOT so wrangler picks up $ROOT/functions
+cd "$ROOT"
 wrangler pages deploy "$SITE" \
     --project-name "$PROJECT" \
     --branch "$PROD_BRANCH" \
@@ -93,4 +104,11 @@ echo "[$(date)] published cycle $CYCLE -> https://$PROJECT.pages.dev/"
 #
 # 4) First publish (also creates the project if it doesn't exist):
 #       ./publish_cloudflare.sh 20260628
+#
+# 5) AirNow observations (monitor-site overlay). Get a free API key at
+#    https://docs.airnowapi.org (Sign up), then store it as a Pages secret
+#    (one time, after the project exists):
+#       wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
+#    Until the secret is set, /api/obs returns 503 and the viewer shows the
+#    monitor toggle greyed out ("obs unavailable").
 # ============================================================

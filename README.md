@@ -72,6 +72,7 @@ Visualization/
 │   ├── postprocess_airquality.py   # CMAQ NetCDF -> manifest + bins + COGs + daily
 │   ├── build_embed.py              # bake one cycle into a standalone HTML
 │   ├── pnw-air-forecast.html       # the viewer (source; DATA_URL="")
+│   ├── functions/api/obs.js        # Cloudflare Pages Function: AirNow obs proxy (/api/obs)
 │   ├── run_post.sh                 # post-process wrapper (postproc + embed)
 │   ├── publish_cloudflare.sh       # deploy web_out/<cycle> to Cloudflare Pages
 │   ├── postprocess_and_publish.sh  # run_post.sh + publish (job the watcher submits)
@@ -117,6 +118,10 @@ chmod 600 ~/.cloudflare_env              # keep the token private; never commit 
 
 # 3. log directory
 mkdir -p /data/project/airpact/jmeng/Visualization/logs
+
+# 4. AirNow API key (monitor-site observations; free account at https://docs.airnowapi.org)
+#    stored as a Cloudflare Pages secret — run once after the project exists:
+wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
 ```
 
 The Cloudflare Pages project (`nw-air-forecast`, production branch `main`) is
@@ -214,10 +219,12 @@ from concentrations, so color scales stay adjustable without reprocessing.
 ## Status & future work
 
 **Done:** hourly + daily views, AQI/concentration coloring (AIRPACT banded PM2.5
-scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflare.
+scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflare,
+live AirNow monitor observations (Pages Function `/api/obs`, 10-min edge cache;
+needs the `AIRNOW_API_KEY` secret — greyed out gracefully when unavailable, e.g.
+in local previews and standalone embeds).
 
 **Placeholder / not yet real:**
-- Monitor-site overlay uses **synthetic** points — wire it to live AirNow observations.
 - Querying forecast data retrospectively
 
 **Ideas:**

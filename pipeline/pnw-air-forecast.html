@@ -497,7 +497,7 @@ async function initData(){
 function banner(msg){const b=document.createElement('div');b.className='map-tag';b.style.top='auto';b.style.bottom='52px';b.style.color='var(--usg)';b.textContent=msg;document.getElementById('map-wrap').appendChild(b);}
 
 /* ---------- state ---------- */
-let view='hourly', species='pm', hour=0, dayIdx=0, colorMode='aqi', opacityVal=0.8, playing=false, stepMs=320, timer=null;
+let view='hourly', species='pm', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
 const show={monitors:true,cities:true,states:true,counties:false};
 
 /* ---------- inject view toggle + day selector ---------- */
@@ -513,7 +513,7 @@ secTime.insertAdjacentHTML('beforeend',
    <p style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin:9px 0 0;line-height:1.5">
    Overall AQI = worse of 24-hr PM2.5 and 8-hr-max ozone.</p></div>`);
 document.getElementById('seg').insertAdjacentHTML('afterend',
-  `<div class="seg" id="colorSeg" style="margin-top:8px"><button data-c="aqi" class="on">AQI</button><button data-c="conc">Concentration</button></div>`);
+  `<div class="seg" id="colorSeg" style="margin-top:8px"><button data-c="aqi">AQI</button><button data-c="conc" class="on">Concentration</button></div>`);
 const secOverlays=document.querySelector('[data-layer=monitors]').closest('.section');
 secOverlays.insertAdjacentHTML('beforeend',
   `<div class="toggle on" data-layer="states"><span>State lines</span><div class="switch"></div></div>
@@ -612,44 +612,45 @@ map.on('click', e=>{
   hideHint();
 });
 
-/* ---------- monitors ---------- */
-const SITES=[['Seattle-Beacon Hill',-122.31,47.57],['Portland-SE Lafayette',-122.65,45.50],
-  ['Spokane-Augusta',-117.36,47.67],['Boise-White Pine',-116.21,43.60],['Yakima-4th Ave',-120.51,46.60],
-  ['Bend-Pump',-121.31,44.06],['Eugene-Amazon Pk',-123.08,44.02],['Tri-Cities',-119.16,46.21],
-  ['Lewiston-1612',-117.02,46.40],['Bellingham-Yew St',-122.42,48.73],['Medford-Welch',-122.81,42.33],
-  ['Missoula-Boyd',-114.01,46.85],['Bozeman',-111.04,45.68],['Redding',-122.39,40.59]];
-let monMarkers=[];
+/* ---------- monitors: real AirNow observations via the /api/obs Pages Function ---------- */
+const OBS_URL='api/obs';
+let OBS=null, monMarkers=[];
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function buildMonitors(){
-  SITES.forEach(([name,lon,lat])=>{
-    const el=document.createElement('div'); el.className='mon-dot';
-    new maplibregl.Marker({element:el}).setLngLat([lon,lat]).addTo(map);
-    el.addEventListener('click',ev=>{ev.stopPropagation();siteClick(name,lon,lat);});
-    monMarkers.push({el,lon,lat,name});
+  fetch(OBS_URL).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(d=>{
+    if(!d.sites||!d.sites.length)throw new Error('no sites');
+    OBS=d;
+    d.sites.forEach(s=>{
+      const el=document.createElement('div'); el.className='mon-dot';
+      new maplibregl.Marker({element:el}).setLngLat([s.lon,s.lat]).addTo(map);
+      el.addEventListener('click',ev=>{ev.stopPropagation();siteClick(s);});
+      monMarkers.push({el,site:s});
+    });
+    recolorMonitors();
+  }).catch(()=>{ /* no obs endpoint (local preview / standalone embed / key unset): disable layer */
+    OBS=null; show.monitors=false;
+    const t=document.querySelector('[data-layer=monitors]');
+    if(t){t.classList.remove('on');t.style.opacity=.45;t.style.pointerEvents='none';
+      const lbl=t.querySelector('span'); if(lbl)lbl.textContent='Monitor sites (obs unavailable)';}
   });
-  recolorMonitors();
 }
-function siteAQI(lon,lat){
-  if(view==='hourly'){ const c=DATA.valueAt(species,hour,lon,lat); return isFinite(c)?aqiOf(species,c):-1; }
-  if(!DATA.daily)return -1;
-  const pm=DATA.daily.at('pm',dayIdx,lon,lat),o3=DATA.daily.at('o3',dayIdx,lon,lat);
-  return Math.max(isFinite(pm)?aqiOf('pm',pm):-1, isFinite(o3)?aqiOf('o3',o3):-1);
-}
-function siteClick(name,lon,lat){
-  const aqi=siteAQI(lon,lat); if(aqi<0)return;
-  const cat=CATS[catIndex(aqi)];
-  let detail;
-  if(view==='hourly'){ const model=DATA.valueAt(species,hour,lon,lat),obs=Math.max(species==='pm'?2:8,model*(0.85+Math.random()*0.3)),unit=DATA.units(species);
-    detail=`<div class="pop-v">${obs.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} obs</span></div>
-      <p class="pop-t" style="margin:6px 0 0">model ${model.toFixed(species==='pm'?1:0)} ${unit}</p>`;
-  } else { detail=`<div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
-      <p class="pop-t" style="margin:6px 0 0">${DATA.daily.days[dayIdx].label}</p>`; }
-  new maplibregl.Popup({offset:12,closeButton:false}).setLngLat([lon,lat]).setHTML(
-    `<p class="pop-t">${name}</p>${detail}<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`).addTo(map);
+function obsAQI(o){ if(!o)return -1; return (o.aqi!=null&&o.aqi>=0)?o.aqi:(isFinite(o.v)?aqiOf(species,o.v):-1); }
+function siteClick(s){
+  const o=s[species]; if(!o)return;
+  const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
+  const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
+  const when=o.utc?esc(o.utc.replace('T',' '))+'Z':'';
+  let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} observed</span></div>
+    <p class="pop-t" style="margin:6px 0 0">AirNow ${when}${aqi>=0?` &middot; AQI ${aqi}`:''}</p>`;
+  if(view==='hourly'){ const model=DATA.valueAt(species,hour,s.lon,s.lat);
+    if(isFinite(model)) detail+=`<p class="pop-t" style="margin:2px 0 0">model ${model.toFixed(species==='pm'?1:0)} ${DATA.units(species)}</p>`; }
+  new maplibregl.Popup({offset:12,closeButton:false}).setLngLat([s.lon,s.lat]).setHTML(
+    `<p class="pop-t">${esc(s.name)}</p>${detail}${cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''}`).addTo(map);
 }
 function recolorMonitors(){
-  monMarkers.forEach(mk=>{const aqi=siteAQI(mk.lon,mk.lat);
+  monMarkers.forEach(mk=>{const o=mk.site[species],aqi=obsAQI(o);
     mk.el.style.background=aqi>=0?rgb(rampColor(aqi)):'#888';
-    mk.el.style.display=show.monitors?'block':'none';});
+    mk.el.style.display=(show.monitors&&o)?'block':'none';});
 }
 
 /* ---------- cities ---------- */
