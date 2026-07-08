@@ -424,6 +424,7 @@ function buildSyntheticData(){
     units:sp=>sp==='pm'?'µg/m³':'ppb',
     cellValue:(sp,h,i,j)=>{const[lon,lat]=ll(i,j);return field(sp,h,lon,lat);},
     valueAt:(sp,h,lon,lat)=>field(sp,h,lon,lat),
+    epoch:(h)=>base.getTime()+h*3600e3,
     timeInfo:(h)=>{const d=new Date(base.getTime()+h*3600e3);
       return{time:d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false}),
              date:`${d.toLocaleDateString(undefined,{weekday:'short'})} ${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`};},
@@ -455,6 +456,7 @@ function buildRealData(mf,arrs){
     units:sp=>arrs[sp].units==='ug/m3'?'µg/m³':arrs[sp].units,
     cellValue:(sp,h,i,j)=>dec(arrs[sp],h*H*W,i,j),
     valueAt:(sp,h,lon,lat)=>{const[i,j]=toIJ(lon,lat);return(i<0||i>=W||j<0||j>=H)?NaN:dec(arrs[sp],h*H*W,i,j);},
+    epoch:(h)=>new Date(hours[h].local).getTime(),
     timeInfo:(h)=>{const d=new Date(hours[h].local);
       return{time:d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false}),
              date:`${d.toLocaleDateString(undefined,{weekday:'short'})} ${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`};},
@@ -650,16 +652,99 @@ map.on('load', async ()=>{
   initArchive();
 });
 
+/* ---------- 72-h sparkline (click-to-query popups) ---------- */
+let SPARK_SEQ=0, sparkSync=null;
+function buildSpark(lng,lat,obs){
+  const n=DATA.nHours, vals=[];
+  for(let h=0;h<n;h++){const c=DATA.valueAt(species,h,lng,lat);vals.push(isFinite(c)?c:NaN);}
+  if(!vals.some(isFinite))return null;
+  const bp=species==='pm'?PM_BP:O3_BP, unit=DATA.units(species), pd=species==='pm'?1:0;
+  const K=++SPARK_SEQ, W=340,HH=116,X0=8,X1=W-8,Y0=HH-16,Y1=5;
+  let vmax=Math.max(...vals.filter(isFinite));
+  if(obs&&isFinite(+obs.v))vmax=Math.max(vmax,+obs.v);
+  const ymax=Math.max(vmax*1.15,bp[1][1]*1.05);
+  const x=h=>X0+(X1-X0)*h/(n-1), y=c=>Y0-(Y0-Y1)*Math.min(c,ymax)/ymax;
+  let bands='';
+  for(let k=0;k<bp.length&&bp[k][0]<ymax;k++){
+    const hi=Math.min(bp[k][1],ymax);
+    bands+=`<rect x="${X0}" y="${y(hi).toFixed(1)}" width="${X1-X0}" height="${Math.max(0,y(k?bp[k][0]:0)-y(hi)).toFixed(1)}" fill="${rgb(CATS[Math.min(k,5)].col)}" opacity="0.16"/>`;
+  }
+  let ticks='';
+  for(let h=0;h<n;h++){const ti=DATA.timeInfo(h);
+    if(h===0||ti.time==='00:00'){
+      if(h>0)ticks+=`<line x1="${x(h).toFixed(1)}" y1="${Y1}" x2="${x(h).toFixed(1)}" y2="${Y0}" stroke="#c8cdd2" stroke-width="0.7"/>`;
+      ticks+=`<text x="${(x(h)+3).toFixed(1)}" y="${HH-4}" font-size="10" fill="#8a949c">${esc(ti.date)}</text>`;}}
+  let line='',seg=[];
+  const flush=()=>{if(seg.length>1)line+=`<polyline fill="none" stroke="#2b3640" stroke-width="1.6" stroke-linejoin="round" points="${seg.join(' ')}"/>`;seg=[];};
+  for(let h=0;h<n;h++){ if(isFinite(vals[h]))seg.push(`${x(h).toFixed(1)},${y(vals[h]).toFixed(1)}`); else flush(); } flush();
+  let obsPt='';
+  if(obs&&isFinite(+obs.v)&&obs.utc){
+    const ho=(new Date(obs.utc+':00Z').getTime()-DATA.epoch(0))/3600e3;
+    if(ho>=0&&ho<=n-1)obsPt=`<circle cx="${x(ho).toFixed(1)}" cy="${y(+obs.v).toFixed(1)}" r="4" fill="#2f6fd0" stroke="#fff" stroke-width="1.3"/>`;
+  }
+  const h0=view==='hourly'?hour:0;
+  const html=
+    `<div class="pop-v"><span id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRPACT6</span></div>
+     <p class="pop-t" id="spw_${K}" style="margin:2px 0 4px"></p>
+     <svg id="sps_${K}" viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;cursor:crosshair">
+       ${bands}${ticks}${line}${obsPt}
+       <line id="spl_${K}" x1="0" y1="${Y1}" x2="0" y2="${Y0}" stroke="#2f6fd0" stroke-width="1.1"/>
+       <circle id="spd_${K}" r="3.2" fill="#2f6fd0"/>
+     </svg>
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+       <span class="pop-cat" id="spc_${K}"></span>
+       ${obsPt?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':''}
+     </div>`;
+  const wire=(popup)=>{
+    const $=id=>document.getElementById(id+'_'+K);
+    const show=h=>{
+      h=Math.max(0,Math.min(n-1,h)); const c=vals[h], ti=DATA.timeInfo(h);
+      $('spv').textContent=isFinite(c)?c.toFixed(pd):'–';
+      $('spw').textContent=`${ti.date} ${ti.time} · hr +${String(h).padStart(2,'0')}`;
+      const chip=$('spc');
+      if(isFinite(c)){const a=aqiOf(species,c),cat=CATS[catIndex(a)];
+        chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`${cat.name} · AQI ${a}`;}
+      else chip.style.display='none';
+      $('spl').setAttribute('x1',x(h));$('spl').setAttribute('x2',x(h));
+      const d=$('spd'); d.setAttribute('cx',x(h)); d.setAttribute('cy',isFinite(c)?y(c):Y0);
+    };
+    const svg=$('sps');
+    if(svg)svg.addEventListener('mousemove',e2=>{
+      const r=svg.getBoundingClientRect();
+      show(Math.round(((e2.clientX-r.left)/r.width*W-X0)/(X1-X0)*(n-1)));});
+    show(h0);
+    sparkSync=show;
+    if(popup)popup.on('close',()=>{if(sparkSync===show)sparkSync=null;});
+  };
+  return {html,wire};
+}
+function dailyBarsHTML(lng,lat){
+  if(!DATA.daily)return '';
+  const days=DATA.daily.days, W=340,HH=96,BW=84;
+  let bars='';
+  days.forEach((d,k)=>{
+    const pm=DATA.daily.at('pm',k,lng,lat), o3=DATA.daily.at('o3',k,lng,lat);
+    const a=Math.max(isFinite(pm)?aqiOf('pm',pm):-1, isFinite(o3)?aqiOf('o3',o3):-1);
+    const cx=30+k*(BW+20);
+    if(a>=0){const hgt=Math.max(6,Math.min(a,200)/200*(HH-34)), cat=CATS[catIndex(a)];
+      bars+=`<rect x="${cx}" y="${HH-20-hgt}" width="${BW}" height="${hgt.toFixed(1)}" rx="3" fill="${rgb(cat.col)}" opacity="0.9"/>
+        <text x="${cx+BW/2}" y="${HH-24-hgt}" font-size="11" font-weight="700" text-anchor="middle" fill="#2b3640">${a}</text>`;}
+    bars+=`<text x="${cx+BW/2}" y="${HH-6}" font-size="10" text-anchor="middle" fill="#8a949c">${esc(d.label)}</text>`;});
+  return `<svg viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;margin-top:6px">${bars}</svg>`;
+}
+
 map.on('click', e=>{
   const{lng,lat}=e.lngLat, b=DATA.bbox;
   if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3])return;
   if(view==='hourly'){
     const c=DATA.valueAt(species,hour,lng,lat); if(!isFinite(c))return;
     const aqi=aqiOf(species,c),ci=catIndex(aqi),cat=CATS[ci],unit=DATA.units(species),spn=species==='pm'?'PM2.5':'Ozone';
-    new maplibregl.Popup({offset:12,closeButton:false}).setLngLat(e.lngLat).setHTML(
-      `<p class="pop-t">${spn} · forecast hr +${String(hour).padStart(2,'0')}</p>
-       <div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
-       <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`).addTo(map);
+    const sp=buildSpark(lng,lat,null);
+    const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat(e.lngLat).setHTML(
+      `<p class="pop-t">${spn} · 72-h forecast</p>${sp?sp.html:
+       `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
+        <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`}`).addTo(map);
+    if(sp)sp.wire(popup);
     updateReadingHourly({lng,lat,c,aqi,ci,unit,spn});
   } else {
     if(!DATA.daily)return;
@@ -667,11 +752,12 @@ map.on('click', e=>{
     const apm=isFinite(pm)?aqiOf('pm',pm):-1, ao3=isFinite(o3)?aqiOf('o3',o3):-1;
     if(apm<0&&ao3<0)return;
     const aqi=Math.max(apm,ao3),ci=catIndex(aqi),cat=CATS[ci],who=apm>=ao3?'PM2.5':'Ozone';
-    new maplibregl.Popup({offset:12,closeButton:false}).setLngLat(e.lngLat).setHTML(
+    new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat(e.lngLat).setHTML(
       `<p class="pop-t">${DATA.daily.days[dayIdx].label} · daily AQI</p>
        <div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
        <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>
-       <p class="pop-t" style="margin:7px 0 0">driven by ${who} · PM ${isFinite(pm)?pm.toFixed(1):'–'} µg/m³, O₃ ${isFinite(o3)?o3.toFixed(0):'–'} ppb</p>`).addTo(map);
+       <p class="pop-t" style="margin:7px 0 0">driven by ${who} · PM ${isFinite(pm)?pm.toFixed(1):'–'} µg/m³, O₃ ${isFinite(o3)?o3.toFixed(0):'–'} ppb</p>
+       ${dailyBarsHTML(lng,lat)}`).addTo(map);
     updateReadingDaily({lng,lat,pm,o3,apm,ao3,aqi,ci});
   }
   hideHint();
@@ -707,11 +793,13 @@ function siteClick(s){
   const when=o.utc?new Date(o.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
     month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
   let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
-    <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}</p>`;
-  if(view==='hourly'){ const model=DATA.valueAt(species,hour,s.lon,s.lat);
-    if(isFinite(model)) detail+=`<p class="pop-t" style="margin:2px 0 0">AIRPACT6 model ${model.toFixed(species==='pm'?1:0)} ${DATA.units(species)}</p>`; }
-  new maplibregl.Popup({offset:12,closeButton:false}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)}</p>${detail}${cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''}`).addTo(map);
+    <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
+  const sp=view==='hourly'?buildSpark(s.lon,s.lat,o):null;
+  const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([s.lon,s.lat]).setHTML(
+    `<p class="pop-t">${esc(s.name)}</p>${detail}`+
+    (sp?`<div style="border-top:1px solid #e3e6e9;margin-top:7px;padding-top:6px">${sp.html}</div>`
+       :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
+  if(sp)sp.wire(popup);
 }
 function recolorMonitors(){
   monMarkers.forEach(mk=>{const o=mk.site[species],aqi=obsAQI(o);
@@ -817,6 +905,7 @@ function updateClock(){
 }
 
 function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock();
+  if(sparkSync&&view==='hourly')sparkSync(hour);
   document.querySelector('.map-tag').childNodes[1].textContent = view==='hourly'?' surface forecast':' (worse of PM2.5 / O₃)'; }
 
 /* ---------- view switching ---------- */
