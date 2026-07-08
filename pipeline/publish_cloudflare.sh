@@ -55,6 +55,19 @@ sed 's#const DATA_URL = "";#const DATA_URL = "data/latest/manifest.json";#' \
 cp "$SRC/manifest.json" "$SRC"/*.bin "$SITE/data/latest/"
 [ "$INCLUDE_COGS" = "1" ] && cp "$SRC"/*.tif "$SITE/data/latest/" 2>/dev/null || true
 
+# archive: every completed cycle under data/<cycle>/, plus an index the viewer
+# uses for its "Forecast cycle" selector. Wrangler uploads are content-hashed,
+# so re-deploying old cycles costs nothing after their first upload.
+ARCHIVED=""
+for C in $(ls -1 "$STAGE_ROOT" | grep -E '^[0-9]{8}$' | sort); do
+  [ -f "$STAGE_ROOT/$C/manifest.json" ] || continue
+  mkdir -p "$SITE/data/$C"
+  cp "$STAGE_ROOT/$C/manifest.json" "$STAGE_ROOT/$C"/*.bin "$SITE/data/$C/"
+  ARCHIVED="$ARCHIVED $C"
+done
+printf '[%s]\n' "$(printf '"%s",' $ARCHIVED | sed 's/,$//')" > "$SITE/data/cycles.json"
+echo "  archived cycles:$ARCHIVED"
+
 # Pages Functions (AirNow obs proxy -> /api/obs). Needs the AIRNOW_API_KEY
 # project secret; without it the endpoint returns 503 and the viewer just
 # greys out the monitor layer.
@@ -68,8 +81,12 @@ cat > "$SITE/_headers" <<HDR
   Cache-Control: no-cache
 /data/latest/manifest.json
   Cache-Control: no-cache
+/data/:cycle/*.bin
+  Cache-Control: public, max-age=31536000, immutable
 /data/latest/*.bin
   Cache-Control: public, max-age=86400
+/data/cycles.json
+  Cache-Control: no-cache
 HDR
 
 echo "  site assembled: $(du -sh "$SITE" | cut -f1)"

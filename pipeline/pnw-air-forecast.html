@@ -475,24 +475,61 @@ async function initData(){
   }
   if(DATA_URL){
     try{
-      const mf=await (await fetch(DATA_URL)).json();
-      const baseUrl=DATA_URL.replace(/[^/]*$/,'');
-      const arrs={};
-      for(const[sp,key]of [['pm','pm25'],['o3','o3']]){
-        const meta=mf.species[key];
-        const buf=await (await fetch(baseUrl+meta.bin)).arrayBuffer();
-        arrs[sp]={u16:new Uint16Array(buf),scale:meta.scale,nodata:meta.nodata,units:meta.units};
-      }
-      if(mf.daily){
-        const buf=await (await fetch(baseUrl+mf.daily.bin)).arrayBuffer();
-        arrs.daily={u16:new Uint16Array(buf),pm_scale:mf.daily.pm_scale,o3_scale:mf.daily.o3_scale,nodata:mf.daily.nodata};
-      }
-      buildRealData(mf,arrs);
+      await loadCycleData(DATA_URL);
       document.querySelector('.demo-badge').style.display='none';
       return;
     }catch(e){ console.warn('Live data load failed; using demo.',e); banner('Live data unavailable — showing demo'); }
   }
   buildSyntheticData();
+}
+async function loadCycleData(url){
+  const mf=await (await fetch(url)).json();
+  const baseUrl=url.replace(/[^/]*$/,'');
+  const arrs={};
+  for(const[sp,key]of [['pm','pm25'],['o3','o3']]){
+    const meta=mf.species[key];
+    const buf=await (await fetch(baseUrl+meta.bin)).arrayBuffer();
+    arrs[sp]={u16:new Uint16Array(buf),scale:meta.scale,nodata:meta.nodata,units:meta.units};
+  }
+  if(mf.daily){
+    const buf=await (await fetch(baseUrl+mf.daily.bin)).arrayBuffer();
+    arrs.daily={u16:new Uint16Array(buf),pm_scale:mf.daily.pm_scale,o3_scale:mf.daily.o3_scale,nodata:mf.daily.nodata};
+  }
+  buildRealData(mf,arrs);
+  return mf;
+}
+
+/* ---------- forecast-cycle archive (data/cycles.json, written by the publisher) ---------- */
+let CYCLE_BASE=null, LATEST_CYCLE=null;
+async function initArchive(){
+  if(!DATA_URL||DATA.mode!=='real')return;
+  const m=DATA_URL.match(/^(.*\/)latest\/manifest\.json$/); if(!m)return;
+  try{
+    const cycles=await (await fetch(m[1]+'cycles.json')).json();
+    if(!Array.isArray(cycles)||cycles.length<2)return;
+    CYCLE_BASE=m[1]; LATEST_CYCLE=cycles[cycles.length-1];
+    const fmtC=c=>`${c.slice(0,4)}-${c.slice(4,6)}-${c.slice(6,8)}`;
+    secPollutant.insertAdjacentHTML('beforebegin',
+      `<div class="section"><p class="label">Forecast cycle</p>
+       <select id="cycleSel" style="width:100%;padding:6px 8px;font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid var(--ink-faint);border-radius:6px">
+       ${cycles.slice().reverse().map(c=>`<option value="${c}">${fmtC(c)}${c===LATEST_CYCLE?' (latest)':''}</option>`).join('')}</select></div>`);
+    document.getElementById('cycleSel').addEventListener('change',e=>switchCycle(e.target.value));
+  }catch(e){ console.warn('cycle archive unavailable',e); }
+}
+async function switchCycle(cyc){
+  const sel=document.getElementById('cycleSel'); if(sel)sel.disabled=true;
+  try{
+    await loadCycleData(cyc===LATEST_CYCLE?DATA_URL:CYCLE_BASE+cyc+'/manifest.json');
+    hour=0; dayIdx=0;
+    cv.width=DATA.W; cv.height=DATA.H;
+    scrub.max=DATA.nHours-1; scrub.value=0;
+    buildDayButtons(); refresh(); setScrubFill();
+    const badge=document.querySelector('.demo-badge');
+    if(badge){ if(cyc===LATEST_CYCLE)badge.style.display='none';
+      else{badge.style.display='';badge.textContent='Archived forecast · cycle '+cyc;
+        badge.style.color='var(--usg)';} }
+  }catch(e){ console.warn('cycle load failed',e); banner('Could not load cycle '+cyc); }
+  if(sel)sel.disabled=false;
 }
 function banner(msg){const b=document.createElement('div');b.className='map-tag';b.style.top='auto';b.style.bottom='52px';b.style.color='var(--usg)';b.textContent=msg;document.getElementById('map-wrap').appendChild(b);}
 
@@ -583,6 +620,7 @@ map.on('load', async ()=>{
   if(!DATA.daily){ document.querySelector('#viewSeg [data-v=daily]').style.opacity=.4;
                    document.querySelector('#viewSeg [data-v=daily]').style.pointerEvents='none'; }
   buildDayButtons(); buildMonitors(); buildCities(); buildLegend(); updateClock(); setScrubFill();
+  initArchive();
 });
 
 map.on('click', e=>{

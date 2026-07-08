@@ -224,10 +224,9 @@ from concentrations, so color scales stay adjustable without reprocessing.
 scale), click-to-query, state/county overlays, nightly auto-publish to Cloudflare,
 live AirNow monitor observations (Pages Function `/api/obs`, 10-min edge cache;
 needs the `AIRNOW_API_KEY` secret — greyed out gracefully when unavailable, e.g.
-in local previews and standalone embeds).
-
-**Placeholder / not yet real:**
-- Querying forecast data retrospectively
+in local previews and standalone embeds), past-forecast archive (every cycle in
+`web_out/` is published under `data/<cycle>/` with a `data/cycles.json` index;
+the viewer's "Forecast cycle" selector loads any archived cycle).
 
 **Ideas:**
 - Fire overlays (BlueSky / HMS perimeters), tribal lands, Class I areas.
