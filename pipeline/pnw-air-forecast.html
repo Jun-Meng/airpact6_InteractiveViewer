@@ -655,12 +655,37 @@ map.on('load', async ()=>{
 
 /* ---------- 72-h sparkline (click-to-query popups) ---------- */
 let SPARK_SEQ=0, sparkSync=null, OBS_SERIES=null;
-function fetchObsSeries(){ // hourly obs for the viewed cycle's window; one fetch per cycle
+function fetchObsSeries(){ // hourly obs for the viewed cycle's window, cached per cycle
+  // AirNow can't serve the whole 72-h domain query in one call (the Function
+  // dies on the payload), so fetch <=24-h day chunks and stitch them here.
+  // All-future chunks are skipped, so a live cycle usually needs one request.
   const isoH=t=>new Date(t).toISOString().slice(0,13);
-  const key=isoH(DATA.epoch(0))+'_'+isoH(DATA.epoch(DATA.nHours-1));
+  const n=DATA.nHours, key=isoH(DATA.epoch(0))+'_'+n;
   if(OBS_SERIES&&OBS_SERIES.key===key)return OBS_SERIES.promise;
-  const promise=fetch(`api/obs-series?start=${isoH(DATA.epoch(0))}&end=${isoH(DATA.epoch(DATA.nHours-1))}`)
-    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();});
+  const now=Date.now(), reqs=[];
+  for(let a=0;a<n;a+=24){
+    if(DATA.epoch(a)>now)break;
+    const b=Math.min(a+23,n-1);
+    reqs.push(fetch(`api/obs-series?start=${isoH(DATA.epoch(a))}&end=${isoH(DATA.epoch(b))}`)
+      .then(r=>{if(!r.ok)throw new Error(r.status);return r.json().then(j=>({off:a,j}));})
+      .catch(()=>null));
+  }
+  const promise=Promise.all(reqs).then(parts=>{
+    const sites={}; let got=false;
+    parts.forEach(p=>{
+      if(!p||!p.j||!p.j.sites)return;
+      got=true;
+      Object.keys(p.j.sites).forEach(id=>{
+        const s=p.j.sites[id];
+        const m=sites[id]||(sites[id]={name:s.name,lon:s.lon,lat:s.lat,
+          pm:new Array(n).fill(null),o3:new Array(n).fill(null)});
+        ['pm','o3'].forEach(sp=>{ if(s[sp])s[sp].forEach((v,i)=>{ if(v!=null&&p.off+i<n)m[sp][p.off+i]=v; }); });
+      });
+    });
+    if(!got)throw new Error('no obs series');
+    return {sites};
+  });
+  promise.catch(()=>{ if(OBS_SERIES&&OBS_SERIES.key===key)OBS_SERIES=null; }); // allow retry next click
   OBS_SERIES={key,promise};
   return promise;
 }

@@ -11,7 +11,7 @@
  */
 
 const BBOX = "-125.92,39.79,-109.59,49.84";
-const MAX_HOURS = 78;
+const MAX_HOURS = 26; // AirNow domain-wide queries die beyond ~1 day; clients chunk by day
 
 export async function onRequestGet(context) {
   const key = context.env.AIRNOW_API_KEY;
