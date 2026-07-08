@@ -226,12 +226,18 @@ live AirNow monitor observations (Pages Function `/api/obs`, 10-min edge cache;
 needs the `AIRNOW_API_KEY` secret — greyed out gracefully when unavailable, e.g.
 in local previews and standalone embeds), past-forecast archive (every cycle in
 `web_out/` is published under `data/<cycle>/` with a `data/cycles.json` index;
-the viewer's "Forecast cycle" selector loads any archived cycle).
+the viewer's "Forecast cycle" selector loads any archived cycle), gzipped `.bin`
+transfer (publisher stages `.bin.gz`, viewer inflates with pako, falls back to raw
+`.bin` for local previews), staleness banner (viewer warns on the map if the
+latest cycle is >36 h old — a silent watcher/publish failure no longer presents
+a stale forecast as current).
 
 **Ideas:**
-- Fire overlays (BlueSky / HMS perimeters), tribal lands, Class I areas.
-- Optional gzip of the `.bin` files (Cloudflare Compression Rule for `application/octet-stream`)
-  or client-side pako decode, to cut first-load from ~25 MB to ~8 MB.
+- 72-hour time-series sparkline on click-to-query.
+- Forecast verification (archived forecasts vs AirNow obs: bias/RMSE per site & lead time).
+- Fire overlays (HMS smoke polygons, NASA FIRMS hotspots), tribal lands, Class I areas.
+- "Use my location" button + place search.
+- Shareable permalinks (cycle/species/hour/view in the URL hash).
 - Eventual mirror to `airpact.wsu.edu` — the same `web_out` artifacts drop straight in.
 
 ---

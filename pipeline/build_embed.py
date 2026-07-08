@@ -76,7 +76,7 @@ def main():
     template = open(args.html).read()
     if not MAPLIBRE_RE.search(template):
         raise SystemExit("Could not find the MapLibre <script> tag in the template HTML.")
-    inject = (PAKO_TAG + "\n"
+    inject = (("" if PAKO_TAG in template else PAKO_TAG + "\n")  # viewer may already load pako
               + '<script id="aqdata" type="application/json">' + blob + '</script>\n'
               + '<script>window.__AQ_EMBED__=JSON.parse(document.getElementById("aqdata").textContent);</script>\n')
     html = MAPLIBRE_RE.sub(lambda m: m.group(1) + "\n" + inject, template, count=1)

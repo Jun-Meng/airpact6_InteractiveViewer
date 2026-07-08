@@ -51,8 +51,22 @@ mkdir -p "$SITE/data/latest"
 sed 's#const DATA_URL = "";#const DATA_URL = "data/latest/manifest.json";#' \
     "$VIEWER" > "$SITE/index.html"
 
+# stage one cycle: manifest + gzipped bins. The .bin.gz is cached next to the
+# source bin in web_out, so each cycle is compressed only once (first publish);
+# the viewer inflates client-side with pako (~25 MB -> ~8 MB first load).
+stage_cycle(){ # $1 = source cycle dir, $2 = dest dir
+  mkdir -p "$2"
+  cp "$1/manifest.json" "$2/"
+  local b
+  for b in "$1"/*.bin; do
+    [ -e "$b" ] || continue
+    [ -f "$b.gz" ] || gzip -9 -c "$b" > "$b.gz"
+    cp "$b.gz" "$2/"
+  done
+}
+
 # data: manifest + packed binaries (the viewer needs these)
-cp "$SRC/manifest.json" "$SRC"/*.bin "$SITE/data/latest/"
+stage_cycle "$SRC" "$SITE/data/latest"
 [ "$INCLUDE_COGS" = "1" ] && cp "$SRC"/*.tif "$SITE/data/latest/" 2>/dev/null || true
 
 # archive: every completed cycle under data/<cycle>/, plus an index the viewer
@@ -61,8 +75,7 @@ cp "$SRC/manifest.json" "$SRC"/*.bin "$SITE/data/latest/"
 ARCHIVED=""
 for C in $(ls -1 "$STAGE_ROOT" | grep -E '^[0-9]{8}$' | sort); do
   [ -f "$STAGE_ROOT/$C/manifest.json" ] || continue
-  mkdir -p "$SITE/data/$C"
-  cp "$STAGE_ROOT/$C/manifest.json" "$STAGE_ROOT/$C"/*.bin "$SITE/data/$C/"
+  stage_cycle "$STAGE_ROOT/$C" "$SITE/data/$C"
   ARCHIVED="$ARCHIVED $C"
 done
 printf '[%s]\n' "$(printf '"%s",' $ARCHIVED | sed 's/,$//')" > "$SITE/data/cycles.json"
@@ -81,9 +94,9 @@ cat > "$SITE/_headers" <<HDR
   Cache-Control: no-cache
 /data/latest/manifest.json
   Cache-Control: no-cache
-/data/:cycle/*.bin
+/data/:cycle/*.bin.gz
   Cache-Control: public, max-age=31536000, immutable
-/data/latest/*.bin
+/data/latest/*.bin.gz
   Cache-Control: public, max-age=86400
 /data/cycles.json
   Cache-Control: no-cache
