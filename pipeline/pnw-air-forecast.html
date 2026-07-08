@@ -654,8 +654,17 @@ map.on('load', async ()=>{
 });
 
 /* ---------- 72-h sparkline (click-to-query popups) ---------- */
-let SPARK_SEQ=0, sparkSync=null;
-function buildSpark(lng,lat,obs){
+let SPARK_SEQ=0, sparkSync=null, OBS_SERIES=null;
+function fetchObsSeries(){ // hourly obs for the viewed cycle's window; one fetch per cycle
+  const isoH=t=>new Date(t).toISOString().slice(0,13);
+  const key=isoH(DATA.epoch(0))+'_'+isoH(DATA.epoch(DATA.nHours-1));
+  if(OBS_SERIES&&OBS_SERIES.key===key)return OBS_SERIES.promise;
+  const promise=fetch(`api/obs-series?start=${isoH(DATA.epoch(0))}&end=${isoH(DATA.epoch(DATA.nHours-1))}`)
+    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();});
+  OBS_SERIES={key,promise};
+  return promise;
+}
+function buildSpark(lng,lat,obs,siteId){
   const n=DATA.nHours, vals=[];
   for(let h=0;h<n;h++){const c=DATA.valueAt(species,h,lng,lat);vals.push(isFinite(c)?c:NaN);}
   if(!vals.some(isFinite))return null;
@@ -685,34 +694,59 @@ function buildSpark(lng,lat,obs){
   }
   const h0=view==='hourly'?hour:0;
   const html=
-    `<div class="pop-v"><span id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRPACT6</span></div>
+    `<div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">
+       <div class="pop-v"><span id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRPACT6</span></div>
+       ${siteId!=null?`<div class="pop-v" style="color:#5b9bec"><span id="spo_${K}">–</span> <span style="font-size:11px;color:var(--ink-mute)">AIRNOW</span></div>`:''}
+     </div>
      <p class="pop-t" id="spw_${K}" style="margin:2px 0 4px"></p>
      <svg id="sps_${K}" viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;cursor:crosshair">
        ${bands}${ticks}${line}${obsPt}
        <line id="spl_${K}" x1="0" y1="${Y1}" x2="0" y2="${Y0}" stroke="#2f6fd0" stroke-width="1.1"/>
        <circle id="spd_${K}" r="3.2" fill="#2f6fd0"/>
+       <circle id="spd2_${K}" r="3" fill="#5b9bec" style="display:none"/>
      </svg>
      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
        <span class="pop-cat" id="spc_${K}"></span>
-       ${obsPt?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':''}
+       ${siteId!=null?'<span style="font-size:10px;color:var(--ink-mute)"><span style="color:var(--ink)">&#8212;</span> AIRPACT6 &nbsp;<span style="color:#5b9bec">&#8212;</span> AirNow obs</span>'
+         :(obsPt?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':'')}
      </div>`;
   const wire=(popup)=>{
     const $=id=>document.getElementById(id+'_'+K);
+    let ovals=null, lastH=h0;
     const show=h=>{
-      h=Math.max(0,Math.min(n-1,h)); const c=vals[h], ti=DATA.timeInfo(h);
+      h=Math.max(0,Math.min(n-1,h)); lastH=h;
+      const c=vals[h], ti=DATA.timeInfo(h);
       $('spv').textContent=isFinite(c)?c.toFixed(pd):'–';
-      $('spw').textContent=`${ti.date} ${ti.time} · hr +${String(h).padStart(2,'0')}`;
+      const ov=(ovals&&isFinite(ovals[h]))?ovals[h]:null;
+      const so=$('spo'); if(so)so.textContent=ov!==null?ov.toFixed(pd):'–';
+      $('spw').textContent=`${ti.date} ${ti.time} · hr +${String(h).padStart(2,'0')}`
+        +((siteId!=null&&ovals&&ov===null)?' · no obs':'');
       const chip=$('spc');
       if(isFinite(c)){const a=aqiOf(species,c),cat=CATS[catIndex(a)];
         chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`${cat.name} · AQI ${a}`;}
       else chip.style.display='none';
       $('spl').setAttribute('x1',x(h));$('spl').setAttribute('x2',x(h));
       const d=$('spd'); d.setAttribute('cx',x(h)); d.setAttribute('cy',isFinite(c)?y(c):Y0);
+      const d2=$('spd2');
+      if(d2){ if(ov!==null){d2.style.display='';d2.setAttribute('cx',x(h));d2.setAttribute('cy',y(ov));}
+              else d2.style.display='none'; }
     };
     const svg=$('sps');
     if(svg)svg.addEventListener('mousemove',e2=>{
       const r=svg.getBoundingClientRect();
       show(Math.round(((e2.clientX-r.left)/r.width*W-X0)/(X1-X0)*(n-1)));});
+    if(siteId!=null)fetchObsSeries().then(d=>{
+      const site=d.sites[siteId]; const arr=site&&site[species]; if(!arr)return;
+      ovals=arr.map(v=>v==null?NaN:v);
+      let po='',seg=[];
+      const fl=()=>{if(seg.length>1)po+=`<polyline fill="none" stroke="#5b9bec" stroke-width="1.5" stroke-linejoin="round" points="${seg.join(' ')}"/>`;seg=[];};
+      for(let h=0;h<n&&h<ovals.length;h++){ if(isFinite(ovals[h]))seg.push(`${x(h).toFixed(1)},${y(ovals[h]).toFixed(1)}`); else fl(); } fl();
+      const nowH=Math.floor((Date.now()-DATA.epoch(0))/3600e3);
+      if(nowH>=0&&nowH<n)po+=`<line x1="${x(nowH).toFixed(1)}" y1="${Y1}" x2="${x(nowH).toFixed(1)}" y2="${Y0}" stroke="var(--ink-mute)" stroke-width="0.8" stroke-dasharray="2 3"/>
+        <text x="${(x(nowH)+3).toFixed(1)}" y="${Y1+8}" font-size="9" fill="var(--ink-mute)">now</text>`;
+      const cur=$('spl'); if(cur)cur.insertAdjacentHTML('beforebegin',po);
+      show(lastH);
+    }).catch(()=>{});
     show(h0);
     sparkSync=show;
     if(popup)popup.on('close',()=>{if(sparkSync===show)sparkSync=null;});
@@ -795,7 +829,7 @@ function siteClick(s){
     month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
   let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
     <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
-  const sp=view==='hourly'?buildSpark(s.lon,s.lat,o):null;
+  const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`):null;
   const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([s.lon,s.lat]).setHTML(
     `<p class="pop-t">${esc(s.name)}</p>${detail}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`

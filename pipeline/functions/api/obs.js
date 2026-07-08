@@ -42,7 +42,7 @@ export async function onRequestGet(context) {
     if (!p || rec.Value == null || rec.Value < -900) continue;
     const id = rec.FullAQSCode || `${rec.Latitude},${rec.Longitude}`;
     const s = sites.get(id) || {
-      name: rec.SiteName, agency: rec.AgencyName,
+      id, name: rec.SiteName, agency: rec.AgencyName,
       lon: rec.Longitude, lat: rec.Latitude,
     };
     if (!s[p] || rec.UTC > s[p].utc)
