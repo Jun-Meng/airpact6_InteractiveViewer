@@ -127,7 +127,9 @@ mkdir -p /data/project/airpact/jmeng/Visualization/logs
 #    is where you paste the key you got from AirNow:
 wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
 
-# 5. same AirNow key on Kamiak for the nightly verification job:
+# 5. same AirNow key on Kamiak for the nightly verification job. Replace
+#    YOUR_KEY below with the actual key from airnowapi.org (the same key you
+#    stored as the Pages secret); AIRNOW_API_KEY stays literal:
 echo 'export AIRNOW_API_KEY=YOUR_KEY' > ~/.airnow_env && chmod 600 ~/.airnow_env
 # backfill verification from the oldest archived cycle (one time):
 python pipeline/verify_airnow.py --backfill 20260627
