@@ -736,7 +736,13 @@ function buildSpark(lng,lat,obs,siteId){
       const r=svg.getBoundingClientRect();
       show(Math.round(((e2.clientX-r.left)/r.width*W-X0)/(X1-X0)*(n-1)));});
     if(siteId!=null)fetchObsSeries().then(d=>{
-      const site=d.sites[siteId]; const arr=site&&site[species]; if(!arr)return;
+      let site=d.sites[siteId];
+      if(!site){ // id mismatch (e.g. stale-cached /api/obs without ids): match by coordinates
+        const eps=1e-4;
+        for(const k in d.sites){const c=d.sites[k];
+          if(Math.abs(c.lon-lng)<eps&&Math.abs(c.lat-lat)<eps){site=c;break;}}
+      }
+      const arr=site&&site[species]; if(!arr)return;
       ovals=arr.map(v=>v==null?NaN:v);
       let po='',seg=[];
       const fl=()=>{if(seg.length>1)po+=`<polyline fill="none" stroke="#5b9bec" stroke-width="1.5" stroke-linejoin="round" points="${seg.join(' ')}"/>`;seg=[];};
