@@ -38,7 +38,9 @@ GitHub push does NOT deploy — deploy is always wrangler from Kamiak.
 - AirNow `/aq/data`: `dataType=B` returns BOTH concentration (`Value`) and AQI; -999 = missing
 
 ## Status
-Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md`.
-- Deployed + tested live: obs layer, conc default, archive selector, gzip (~8 MB), staleness banner, sparklines
-- Built 2026-07-08, NOT yet deployed: forecast verification (`verify_airnow.py` + `verify.html` + pipeline wiring) — Jun must: push/pull, create `~/.airnow_env` on Kamiak, `--backfill 20260627`, republish, check /verify.html
-- Deferred ideas: fire overlays, geolocation+search, permalinks, publish-failure alert, MDA8 verification
+Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md` (full detail there).
+- Deployed + confirmed live: obs layer, conc default, archive selector, gzip, staleness banner, sparklines with obs curve (chunked ≤24 h obs-series fetches — AirNow dies on bigger windows)
+- Verification (`/verify.html` + nightly `verify_airnow.py`): set up 07-08 — confirm it shows data next session
+- Built, NOT deployed: permalinks (hash state) + find-a-place (Nominatim search + geolocate) — Jun to push/pull/republish, then test per worklog
+- Agreed next: HMS smoke + FIRMS fire overlay; then verification badge in popups, publish-failure email, MDA8
+- Key API gotchas: AirNow /aq/data max ~24 h per domain-wide query; CF edge cache survives deploys (id-matching fallback exists)
