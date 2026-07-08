@@ -38,7 +38,7 @@ GitHub push does NOT deploy — deploy is always wrangler from Kamiak.
 - AirNow `/aq/data`: `dataType=B` returns BOTH concentration (`Value`) and AQI; -999 = missing
 
 ## Status
-See `memory/worklog/2026-07-07.md` for full session log.
-- Deployed + tested: AirNow obs layer, conc default, PDT timestamps
-- Committed, NOT yet deploy-tested: archive selector, gzip compression, staleness banner, sparkline popup — TEST THESE FIRST next session
-- Next up (agreed, not started): forecast verification page (mockup approved; build after current batch verified)
+Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md`.
+- Deployed + tested live: obs layer, conc default, archive selector, gzip (~8 MB), staleness banner, sparklines
+- Built 2026-07-08, NOT yet deployed: forecast verification (`verify_airnow.py` + `verify.html` + pipeline wiring) — Jun must: push/pull, create `~/.airnow_env` on Kamiak, `--backfill 20260627`, republish, check /verify.html
+- Deferred ideas: fire overlays, geolocation+search, permalinks, publish-failure alert, MDA8 verification

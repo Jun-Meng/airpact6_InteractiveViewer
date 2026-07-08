@@ -18,6 +18,7 @@ PROD_BRANCH="main"                                                          # ED
 STAGE_ROOT="/data/project/airpact/jmeng/Visualization/web_out"             # EDIT parent of web_out/<cycle>
 VIEWER="/data/project/airpact/jmeng/Visualization/pipeline/pnw-air-forecast.html"  # EDIT viewer template
 FUNCTIONS="/data/project/airpact/jmeng/Visualization/pipeline/functions"    # EDIT Pages Functions (AirNow proxy)
+VERIFY_HTML="/data/project/airpact/jmeng/Visualization/pipeline/verify.html" # EDIT verification page
 INCLUDE_COGS=0                                                              # 1 to also publish .tif downloads
 
 # ---- credentials (cron has a bare environment, so source them from a file) ----
@@ -81,6 +82,13 @@ done
 printf '[%s]\n' "$(printf '"%s",' $ARCHIVED | sed 's/,$//')" > "$SITE/data/cycles.json"
 echo "  archived cycles:$ARCHIVED"
 
+# verification page + nightly obs-vs-forecast stats (written by verify_airnow.py)
+[ -f "$VERIFY_HTML" ] && cp "$VERIFY_HTML" "$SITE/verify.html"
+if [ -f "$STAGE_ROOT/verification/summary.json" ]; then
+  mkdir -p "$SITE/data/verification"
+  cp "$STAGE_ROOT/verification/summary.json" "$SITE/data/verification/"
+fi
+
 # Pages Functions (AirNow obs proxy -> /api/obs). Needs the AIRNOW_API_KEY
 # project secret; without it the endpoint returns 503 and the viewer just
 # greys out the monitor layer.
@@ -99,6 +107,10 @@ cat > "$SITE/_headers" <<HDR
 /data/latest/*.bin.gz
   Cache-Control: public, max-age=86400
 /data/cycles.json
+  Cache-Control: no-cache
+/verify.html
+  Cache-Control: no-cache
+/data/verification/summary.json
   Cache-Control: no-cache
 HDR
 

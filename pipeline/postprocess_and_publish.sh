@@ -31,6 +31,19 @@ echo "[$(date)] post-process + publish for cycle $CYCLE on $(hostname)"
 # ---- 1) post-process: build web_out/<cycle> + embedded HTML (no internet) ----
 bash "$PIPE/run_post.sh" "$CYCLE"
 
+# ---- 1b) verification: pair yesterday's AirNow obs with archived forecasts ----
+# Non-fatal: a hiccup here must never block the daily forecast publish.
+# Needs ~/.airnow_env (AIRNOW_API_KEY) and the aqf env; meng partition has internet.
+(
+  set +e
+  source /etc/profile.d/modules.sh 2>/dev/null
+  module load anaconda3 2>/dev/null
+  source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate aqf
+  YDAY=$(date -d "yesterday" +%Y%m%d)
+  python "$PIPE/verify_airnow.py" --date "$YDAY" \
+    || echo "[$(date)] WARNING: verification failed for $YDAY (continuing)"
+)
+
 # ---- 2) publish web_out/<cycle> to Cloudflare Pages (meng has internet) ----
 bash "$PIPE/publish_cloudflare.sh" "$CYCLE"
 

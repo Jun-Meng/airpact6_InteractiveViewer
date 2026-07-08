@@ -73,6 +73,8 @@ Visualization/
 │   ├── build_embed.py              # bake one cycle into a standalone HTML
 │   ├── pnw-air-forecast.html       # the viewer (source; DATA_URL="")
 │   ├── functions/api/obs.js        # Cloudflare Pages Function: AirNow obs proxy (/api/obs)
+│   ├── verify_airnow.py            # nightly obs-vs-forecast pairing -> verification stats
+│   ├── verify.html                 # verification page (bias/RMSE/r, published as /verify.html)
 │   ├── run_post.sh                 # post-process wrapper (postproc + embed)
 │   ├── publish_cloudflare.sh       # deploy web_out/<cycle> to Cloudflare Pages
 │   ├── postprocess_and_publish.sh  # run_post.sh + publish (job the watcher submits)
@@ -124,6 +126,11 @@ mkdir -p /data/project/airpact/jmeng/Visualization/logs
 #    the secret's *name*); wrangler then prompts "Enter a secret value:" and THAT
 #    is where you paste the key you got from AirNow:
 wrangler pages secret put AIRNOW_API_KEY --project-name nw-air-forecast
+
+# 5. same AirNow key on Kamiak for the nightly verification job:
+echo 'export AIRNOW_API_KEY=YOUR_KEY' > ~/.airnow_env && chmod 600 ~/.airnow_env
+# backfill verification from the oldest archived cycle (one time):
+python pipeline/verify_airnow.py --backfill 20260627
 ```
 
 The Cloudflare Pages project (`nw-air-forecast`, production branch `main`) is
@@ -230,11 +237,19 @@ the viewer's "Forecast cycle" selector loads any archived cycle), gzipped `.bin`
 transfer (publisher stages `.bin.gz`, viewer inflates with pako, falls back to raw
 `.bin` for local previews), staleness banner (viewer warns on the map if the
 latest cycle is >36 h old — a silent watcher/publish failure no longer presents
-a stale forecast as current).
+a stale forecast as current), 72-hour sparkline click popups (AQI band shading,
+hover-to-inspect, animation-synced cursor, AirNow obs point on monitor popups,
+daily-AQI bars in Daily view).
+
+**Forecast verification** (`/verify.html`): every night `verify_airnow.py` pairs
+yesterday's AirNow hourly obs with the archived forecasts covering that day
+(lead day 1–3), stores sufficient statistics under `web_out/verification/`
+(per-day history + rolling 90-day `summary.json`), and the page computes
+bias/RMSE/correlation client-side with species/window/region/lead filters.
+Runs inside `postprocess_and_publish.sh` (non-fatal on failure); backfillable
+with `--backfill YYYYMMDD`.
 
 **Ideas:**
-- 72-hour time-series sparkline on click-to-query.
-- Forecast verification (archived forecasts vs AirNow obs: bias/RMSE per site & lead time).
 - Fire overlays (HMS smoke polygons, NASA FIRMS hotspots), tribal lands, Class I areas.
 - "Use my location" button + place search.
 - Shareable permalinks (cycle/species/hour/view in the URL hash).

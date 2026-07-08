@@ -583,7 +583,8 @@ document.getElementById('seg').insertAdjacentHTML('afterend',
 const secOverlays=document.querySelector('[data-layer=monitors]').closest('.section');
 secOverlays.insertAdjacentHTML('beforeend',
   `<div class="toggle on" data-layer="states"><span>State lines</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="counties"><span>County lines</span><div class="switch"></div></div>`);
+   <div class="toggle" data-layer="counties"><span>County lines</span><div class="switch"></div></div>
+   <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>`);
 
 /* ---------- canvas ---------- */
 const cv=document.getElementById('aqCanvas'), cx=cv.getContext('2d');

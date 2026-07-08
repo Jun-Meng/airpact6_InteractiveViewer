@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Forecast verification — Northwest Air Forecast</title>
+<style>
+:root{--bg:#f6f7f8;--card:#fff;--ink:#1d2630;--ink-mute:#5f6b76;--ink-faint:#8a949c;
+  --line:#e3e6e9;--blue:#2f6fd0;--coral:#d85a30;--mono:ui-monospace,'SF Mono',Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:22px 18px 40px}
+header{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+h1{font-size:19px;margin:0}
+.sub{font-size:12px;color:var(--ink-mute);margin:3px 0 0}
+a{color:var(--blue);text-decoration:none}
+select{font:13px inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink)}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi p{margin:0}.kpi .l{font-size:12px;color:var(--ink-mute)}.kpi .v{font-size:22px;font-weight:600;font-family:var(--mono)}
+.kpi .u{font-size:11px;color:var(--ink-faint);font-weight:400}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.card h2{font-size:13px;font-weight:600;margin:0 0 8px}
+.card h2 span{font-weight:400;color:var(--ink-faint)}
+svg{display:block;width:100%}
+.row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.bar{flex:1;height:8px;background:var(--bg);border-radius:4px}.bar div{height:8px;border-radius:4px;background:#f0997b}
+.note{font-size:11px;color:var(--ink-faint);margin-top:14px;line-height:1.6}
+#empty{display:none;text-align:center;color:var(--ink-mute);padding:60px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>Forecast verification</h1>
+    <p class="sub">AIRPACT6 vs AirNow · hourly pairs at monitor sites · <a href="index.html">← back to the map</a></p>
+  </div>
+  <div class="controls">
+    <select id="fSp"><option value="pm">PM2.5</option><option value="o3">Ozone</option></select>
+    <select id="fWin"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select>
+    <select id="fSt"><option value="">All regions</option></select>
+    <select id="fLd"><option value="">All lead days</option><option value="1">Day 1</option><option value="2">Day 2</option><option value="3">Day 3</option></select>
+  </div>
+</header>
+<div id="empty">No verification data yet — the nightly pairing job hasn't produced results for this filter.</div>
+<div id="content">
+<div class="kpis">
+  <div class="kpi"><p class="l">Mean bias</p><p class="v" id="k0">–</p></div>
+  <div class="kpi"><p class="l">RMSE</p><p class="v" id="k1">–</p></div>
+  <div class="kpi"><p class="l">Correlation r</p><p class="v" id="k2">–</p></div>
+  <div class="kpi"><p class="l">Paired values</p><p class="v" id="k3">–</p></div>
+</div>
+<div class="grid2">
+  <div class="card"><h2>Forecast vs observed <span id="su1"></span></h2><svg id="sc" viewBox="0 0 320 240"></svg></div>
+  <div class="card"><h2>Bias by forecast lead hour <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg></div>
+</div>
+<div class="card"><h2>Daily domain mean <span>— <span style="color:var(--blue)">●</span> observed &nbsp;<span style="color:var(--ink-mute)">—</span> forecast (selected leads)</span></h2><svg id="ts" viewBox="0 0 940 170"></svg></div>
+<div class="card"><h2>Sites with largest RMSE <span id="su3"></span></h2><div id="tbl"></div></div>
+<p class="note" id="meta"></p>
+</div>
+<p class="note">Method: hourly AirNow observations are paired with the archived forecast value at the
+nearest grid cell for every cycle covering that hour (lead day 1 = same-day cycle, day 2–3 = earlier cycles).
+Scatter shows site-day mean pairs. Bias = forecast − observed. OTH = non-US or unrecognized site codes (e.g. BC).</p>
+</div>
+<script>
+let SUM=null;
+const $=id=>document.getElementById(id);
+const UNITS={pm:'µg/m³',o3:'ppb'};
+fetch('data/verification/summary.json').then(r=>{if(!r.ok)throw 0;return r.json();})
+  .then(s=>{SUM=s;initStates();draw();})
+  .catch(()=>{$('content').style.display='none';$('empty').style.display='block';});
+['fSp','fWin','fSt','fLd'].forEach(id=>$(id).addEventListener('change',draw));
+
+function initStates(){
+  const sts=[...new Set(Object.values(SUM.sites).map(s=>s.st))].sort();
+  sts.forEach(st=>{const o=document.createElement('option');o.value=st;o.textContent=st;$('fSt').appendChild(o);});
+}
+function filtered(){
+  const sp=$('fSp').value, st=$('fSt').value, ld=$('fLd').value;
+  const days=SUM.days.slice(-(+$('fWin').value));
+  const recs=[];
+  days.forEach(d=>d.rec.forEach(r=>{
+    if(r[1]!==sp)return;
+    if(ld&&r[2]!==+ld)return;
+    if(st&&(SUM.sites[r[0]]||{}).st!==st)return;
+    recs.push({date:d.date,sid:r[0],ld:r[2],n:r[3],so:r[4],sf:r[5],soo:r[6],sff:r[7],sof:r[8]});
+  }));
+  return {sp,st,ld,days,recs};
+}
+function stats(recs){
+  let n=0,so=0,sf=0,soo=0,sff=0,sof=0;
+  recs.forEach(r=>{n+=r.n;so+=r.so;sf+=r.sf;soo+=r.soo;sff+=r.sff;sof+=r.sof;});
+  if(!n)return null;
+  const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
+  const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
+  return {n,bias,rmse,r:den>0?(n*sof-so*sf)/den:NaN,mo:so/n};
+}
+function draw(){
+  const F=filtered(), u=UNITS[F.sp], S=stats(F.recs);
+  $('su1').textContent='('+u+', site-day means)';$('su2').textContent='('+u+')';
+  $('empty').style.display=S?'none':'block';$('content').style.display=S?'':'none';
+  if(!S)return;
+  $('k0').innerHTML=(S.bias>=0?'+':'')+S.bias.toFixed(F.sp==='pm'?2:1)+' <span class="u">'+u+'</span>';
+  $('k1').innerHTML=S.rmse.toFixed(F.sp==='pm'?2:1)+' <span class="u">'+u+'</span>';
+  $('k2').textContent=isFinite(S.r)?S.r.toFixed(2):'–';
+  $('k3').textContent=S.n.toLocaleString();
+  scatter(F);leadhour(F);tseries(F);table(F);
+  $('meta').textContent='Data: '+F.days.length+' day(s) ending '+fmtd(F.days[F.days.length-1].date)
+    +' · updated '+SUM.updated.replace('T',' ')+' · '+Object.keys(SUM.sites).length+' sites known';
+}
+const fmtd=d=>d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
+function scatter(F){
+  let pts=F.recs.map(r=>[r.so/r.n,r.sf/r.n]);
+  if(pts.length>1500){const step=pts.length/1500;const s2=[];for(let i=0;i<pts.length;i+=step)s2.push(pts[Math.floor(i)]);pts=s2;}
+  const mx=Math.max(5,...pts.map(p=>Math.max(p[0],p[1])))*1.05;
+  const X=v=>36+v/mx*270, Y=v=>210-v/mx*195;
+  let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
+    <line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
+    <text x="304" y="${Y(mx)+12}" font-size="10" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
+  pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.4" fill="var(--blue)" opacity="0.4"/>`;});
+  s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
+    <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
+    <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
+    <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
+  $('sc').innerHTML=s;
+}
+function leadhour(F){
+  const acc={};
+  F.days.forEach(d=>d.lh.forEach(r=>{
+    if(r[0]!==F.sp)return;
+    const a=acc[r[1]]=acc[r[1]]||[0,0,0];
+    a[0]+=r[2];a[1]+=r[3];a[2]+=r[4];
+  }));
+  const hs=Object.keys(acc).map(Number).sort((a,b)=>a-b);
+  if(!hs.length){$('ld').innerHTML='';return;}
+  const b=hs.map(h=>(acc[h][2]-acc[h][1])/acc[h][0]);
+  const span=Math.max(1e-6,...b.map(Math.abs))*1.25;
+  const X=h=>36+h/71*270, Y=v=>112-v/span*95;
+  let s=`<line x1="36" y1="112" x2="306" y2="112" stroke="var(--line)"/>
+    <text x="32" y="116" font-size="10" fill="var(--ink-faint)" text-anchor="end">0</text>
+    <text x="32" y="${Y(span/1.25)+4}" font-size="10" fill="var(--ink-faint)" text-anchor="end">${(span/1.25).toFixed(1)}</text>
+    <text x="32" y="${Y(-span/1.25)+4}" font-size="10" fill="var(--ink-faint)" text-anchor="end">−${(span/1.25).toFixed(1)}</text>`;
+  let pts='';hs.forEach((h,i)=>{pts+=X(h).toFixed(1)+','+Y(b[i]).toFixed(1)+' ';});
+  s+=`<polyline fill="none" stroke="var(--coral)" stroke-width="1.6" points="${pts}"/>`;
+  [0,12,24,36,48,60,71].forEach(h=>{s+=`<text x="${X(h).toFixed(1)}" y="232" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${h}</text>`;});
+  s+=`<text x="171" y="218" font-size="11" fill="var(--ink-mute)" text-anchor="middle">lead hour</text>`;
+  $('ld').innerHTML=s;
+}
+function tseries(F){
+  const per=F.days.map(d=>{
+    let n=0,so=0,sf=0;
+    d.rec.forEach(r=>{
+      if(r[1]!==F.sp)return;
+      if(F.ld&&r[2]!==+F.ld)return;
+      if(F.st&&(SUM.sites[r[0]]||{}).st!==F.st)return;
+      n+=r[3];so+=r[4];sf+=r[5];});
+    return n?{d:d.date,o:so/n,f:sf/n}:null;}).filter(Boolean);
+  if(!per.length){$('ts').innerHTML='';return;}
+  const mx=Math.max(...per.map(p=>Math.max(p.o,p.f)))*1.2;
+  const X=i=>30+i*(900/Math.max(1,per.length-1)), Y=v=>140-v/mx*125;
+  let pf='';per.forEach((p,i)=>{pf+=X(i).toFixed(1)+','+Y(p.f).toFixed(1)+' ';});
+  let s=`<line x1="30" y1="140" x2="930" y2="140" stroke="var(--line)"/>
+    <polyline fill="none" stroke="var(--ink-mute)" stroke-width="1.6" points="${pf}"/>`;
+  per.forEach((p,i)=>{s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.o).toFixed(1)}" r="3" fill="var(--blue)"/>`;
+    const lbl=Math.max(1,Math.ceil(per.length/12));
+    if(i%lbl===0)s+=`<text x="${X(i).toFixed(1)}" y="156" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${p.d.slice(4,6)}/${p.d.slice(6,8)}</text>`;});
+  $('ts').innerHTML=s;
+}
+function table(F){
+  const by={};
+  F.recs.forEach(r=>{const a=by[r.sid]=by[r.sid]||{n:0,so:0,sf:0,soo:0,sff:0,sof:0};
+    a.n+=r.n;a.so+=r.so;a.sf+=r.sf;a.soo+=r.soo;a.sff+=r.sff;a.sof+=r.sof;});
+  const rows=Object.entries(by).filter(([,a])=>a.n>=8)
+    .map(([sid,a])=>({sid,n:a.n,rmse:Math.sqrt(Math.max(0,(a.sff-2*a.sof+a.soo)/a.n)),
+      bias:(a.sf-a.so)/a.n}))
+    .sort((a,b)=>b.rmse-a.rmse).slice(0,8);
+  $('su3').textContent=rows.length?'(min 8 pairs)':'';
+  if(!rows.length){$('tbl').innerHTML='<p style="font-size:12px;color:var(--ink-faint)">not enough pairs</p>';return;}
+  const mx=rows[0].rmse, u=UNITS[F.sp];
+  $('tbl').innerHTML=rows.map(r=>{
+    const m=SUM.sites[r.sid]||{name:r.sid,st:''};
+    return `<div class="row"><span style="flex:0 0 250px">${m.name} <span style="color:var(--ink-faint);font-size:11px">${m.st} · n=${r.n}</span></span>
+      <div class="bar"><div style="width:${(r.rmse/mx*100).toFixed(0)}%"></div></div>
+      <span style="flex:0 0 150px;text-align:right;font-family:var(--mono);font-size:12px">${r.rmse.toFixed(1)} ${u} · bias ${(r.bias>=0?'+':'')}${r.bias.toFixed(1)}</span></div>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
