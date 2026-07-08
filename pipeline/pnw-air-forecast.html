@@ -543,6 +543,10 @@ async function initArchive(){
        <select id="cycleSel" style="width:100%;padding:6px 8px;font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid var(--ink-faint);border-radius:6px">
        ${cycles.slice().reverse().map(c=>`<option value="${c}">${fmtC(c)}${c===LATEST_CYCLE?' (latest)':''}</option>`).join('')}</select></div>`);
     document.getElementById('cycleSel').addEventListener('change',e=>switchCycle(e.target.value));
+    if(HASH_CYCLE&&HASH_CYCLE!==LATEST_CYCLE&&cycles.includes(HASH_CYCLE)){ // permalink to an archived cycle
+      document.getElementById('cycleSel').value=HASH_CYCLE;
+      switchCycle(HASH_CYCLE);
+    }
   }catch(e){ console.warn('cycle archive unavailable',e); }
 }
 async function switchCycle(cyc){
@@ -573,7 +577,15 @@ const scrubWrap=document.querySelector('.scrub-wrap');
 const transport=document.querySelector('.transport');
 secPollutant.insertAdjacentHTML('beforebegin',
   `<div class="section"><p class="label">View</p>
-   <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily AQI</button></div></div>`);
+   <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily AQI</button></div></div>
+   <div class="section"><p class="label">Find a place</p>
+   <div style="display:flex;gap:6px">
+     <input id="geoq" type="search" placeholder="City or address&hellip;" autocomplete="off"
+       style="flex:1;min-width:0;font:12px inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 8px;outline:none">
+     <button id="geoloc" title="Use my location"
+       style="flex:0 0 32px;font-size:15px;color:var(--ink-mute);background:transparent;border:1px solid var(--line);border-radius:7px;cursor:pointer">&#9678;</button>
+   </div>
+   <div id="geores"></div></div>`);
 secTime.insertAdjacentHTML('beforeend',
   `<div id="daySel" style="display:none"><div class="seg" style="flex-direction:column;gap:4px" id="dayBtns"></div>
    <p style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin:9px 0 0;line-height:1.5">
@@ -650,7 +662,9 @@ map.on('load', async ()=>{
   if(!DATA.daily){ document.querySelector('#viewSeg [data-v=daily]').style.opacity=.4;
                    document.querySelector('#viewSeg [data-v=daily]').style.pointerEvents='none'; }
   buildDayButtons(); buildMonitors(); buildCities(); buildLegend(); updateClock(); setScrubFill();
+  HASH_CYCLE=applyHash(); refresh(); HASH_READY=true;
   initArchive();
+  map.on('moveend',updateHash);
 });
 
 /* ---------- 72-h sparkline (click-to-query popups) ---------- */
@@ -799,14 +813,14 @@ function dailyBarsHTML(lng,lat){
   return `<svg viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;margin-top:6px">${bars}</svg>`;
 }
 
-map.on('click', e=>{
-  const{lng,lat}=e.lngLat, b=DATA.bbox;
+function queryPoint(lng,lat){
+  const b=DATA.bbox;
   if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3])return;
   if(view==='hourly'){
     const c=DATA.valueAt(species,hour,lng,lat); if(!isFinite(c))return;
     const aqi=aqiOf(species,c),ci=catIndex(aqi),cat=CATS[ci],unit=DATA.units(species),spn=species==='pm'?'PM2.5':'Ozone';
     const sp=buildSpark(lng,lat,null);
-    const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat(e.lngLat).setHTML(
+    const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([lng,lat]).setHTML(
       `<p class="pop-t">${spn} · 72-h forecast</p>${sp?sp.html:
        `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
         <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`}`).addTo(map);
@@ -818,7 +832,7 @@ map.on('click', e=>{
     const apm=isFinite(pm)?aqiOf('pm',pm):-1, ao3=isFinite(o3)?aqiOf('o3',o3):-1;
     if(apm<0&&ao3<0)return;
     const aqi=Math.max(apm,ao3),ci=catIndex(aqi),cat=CATS[ci],who=apm>=ao3?'PM2.5':'Ozone';
-    new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat(e.lngLat).setHTML(
+    new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([lng,lat]).setHTML(
       `<p class="pop-t">${DATA.daily.days[dayIdx].label} · daily AQI</p>
        <div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
        <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>
@@ -827,7 +841,8 @@ map.on('click', e=>{
     updateReadingDaily({lng,lat,pm,o3,apm,ao3,aqi,ci});
   }
   hideHint();
-});
+}
+map.on('click', e=>queryPoint(e.lngLat.lng,e.lngLat.lat));
 
 /* ---------- monitors: real AirNow observations via the /api/obs Pages Function ---------- */
 const OBS_URL='api/obs';
@@ -970,7 +985,7 @@ function updateClock(){
   }
 }
 
-function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock();
+function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash();
   if(sparkSync&&view==='hourly')sparkSync(hour);
   document.querySelector('.map-tag').childNodes[1].textContent = view==='hourly'?' surface forecast':' (worse of PM2.5 / O₃)'; }
 
@@ -1017,6 +1032,80 @@ document.getElementById('speed').addEventListener('click',e=>{const b=e.target.c
   document.querySelectorAll('#speed button').forEach(x=>x.classList.toggle('on',x===b));if(playing){setPlay(false);setPlay(true);}});
 
 function hideHint(){const h=document.getElementById('hint');if(h)h.style.opacity='0';}
+
+/* ---------- permalinks: URL hash <-> state ---------- */
+let HASH_READY=false, HASH_CYCLE=null, hashT=null;
+function updateHash(){
+  if(!HASH_READY)return;
+  clearTimeout(hashT);
+  hashT=setTimeout(()=>{
+    const c=map.getCenter();
+    const parts=[`sp=${species}`,`view=${view}`,`c=${colorMode}`,
+      view==='daily'?`d=${dayIdx}`:`h=${hour}`,
+      `ll=${c.lat.toFixed(3)},${c.lng.toFixed(3)}`,`z=${map.getZoom().toFixed(2)}`];
+    const sel=document.getElementById('cycleSel');
+    if(sel&&LATEST_CYCLE&&sel.value!==LATEST_CYCLE)parts.push(`cycle=${sel.value}`);
+    history.replaceState(null,'','#'+parts.join('&'));
+  },300);
+}
+function applyHash(){ // restore state from a shared link; returns requested cycle (if any)
+  let p; try{p=new URLSearchParams(location.hash.slice(1));}catch(e){return null;}
+  if(![...p.keys()].length)return null;
+  const sp=p.get('sp');
+  if(sp==='pm'||sp==='o3'){species=sp;
+    document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x.dataset.sp===sp));}
+  const cm=p.get('c');
+  if(cm==='aqi'||cm==='conc'){colorMode=cm;
+    document.querySelectorAll('#colorSeg button').forEach(x=>x.classList.toggle('on',x.dataset.c===cm));}
+  const h=parseInt(p.get('h'),10);
+  if(Number.isFinite(h)&&h>=0&&h<DATA.nHours){hour=h;scrub.value=h;setScrubFill();}
+  const d=parseInt(p.get('d'),10);
+  if(DATA.daily&&Number.isFinite(d)&&d>=0&&d<DATA.daily.nDays){dayIdx=d;buildDayButtons();}
+  if(p.get('view')==='daily'&&DATA.daily)setView('daily');
+  const ll=(p.get('ll')||'').split(','), z=parseFloat(p.get('z'));
+  if(ll.length===2&&isFinite(+ll[0])&&isFinite(+ll[1]))
+    map.jumpTo({center:[+ll[1],+ll[0]],zoom:Number.isFinite(z)?z:map.getZoom()});
+  return /^[0-9]{8}$/.test(p.get('cycle')||'')?p.get('cycle'):null;
+}
+
+/* ---------- find a place: geolocation + OSM Nominatim search ---------- */
+function goToPlace(lng,lat,zoom){
+  map.flyTo({center:[lng,lat],zoom:zoom||8});
+  queryPoint(lng,lat);
+}
+document.getElementById('geoloc').addEventListener('click',()=>{
+  if(!navigator.geolocation){banner('Geolocation not supported by this browser');return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const{longitude:lng,latitude:lat}=pos.coords, b=DATA.bbox;
+    if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3]){banner('Your location is outside the forecast domain');return;}
+    goToPlace(lng,lat);
+  },()=>banner('Could not get your location'),{timeout:8000});
+});
+let geoT=null;
+const geores=document.getElementById('geores');
+document.getElementById('geoq').addEventListener('input',e=>{
+  const q=e.target.value.trim();
+  clearTimeout(geoT);
+  if(q.length<3){geores.innerHTML='';return;}
+  geoT=setTimeout(async()=>{
+    try{
+      const b=DATA.bbox;
+      const u='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&bounded=1'
+        +`&viewbox=${b[0]},${b[3]},${b[2]},${b[1]}&q=${encodeURIComponent(q)}`;
+      const rows=await (await fetch(u)).json();
+      geores.innerHTML=rows.length?rows.map(r=>
+        `<div class="geo-hit" data-lon="${(+r.lon).toFixed(5)}" data-lat="${(+r.lat).toFixed(5)}"
+           style="font-size:11px;color:var(--ink-mute);padding:5px 2px;border-top:1px solid var(--line);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+           title="${esc(r.display_name)}">${esc(r.display_name)}</div>`).join('')
+        :'<div style="font-size:11px;color:var(--ink-faint);padding:5px 2px">no results in the forecast domain</div>';
+    }catch(err){geores.innerHTML='<div style="font-size:11px;color:var(--ink-faint);padding:5px 2px">search unavailable</div>';}
+  },450);
+});
+geores.addEventListener('click',e=>{
+  const hit=e.target.closest('.geo-hit'); if(!hit)return;
+  geores.innerHTML=''; document.getElementById('geoq').value='';
+  goToPlace(+hit.dataset.lon,+hit.dataset.lat);
+});
 opacitySlider.style.setProperty('--fill','75%');
 </script>
 </body>
