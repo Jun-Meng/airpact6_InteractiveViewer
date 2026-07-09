@@ -183,6 +183,11 @@
     border-radius: 9px; padding: 12px 13px; font-family: var(--ui); box-shadow: 0 10px 30px rgba(0,0,0,.4);
   }
   .maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
+  .maplibregl-popup-close-button {
+    color: var(--ink-mute); font-size: 18px; line-height: 1; padding: 4px 8px;
+    right: 2px; top: 2px; border-radius: 6px; background: transparent;
+  }
+  .maplibregl-popup-close-button:hover { color: var(--ink); background: rgba(255,255,255,.08); }
   .pop-t { font-size: 11px; color: var(--ink-mute); margin: 0 0 5px; }
   .pop-v { font-family: var(--mono); font-size: 18px; font-weight: 700; }
   .pop-cat { display:inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #0b0f12; margin-top: 6px; }
@@ -821,7 +826,7 @@ function queryPoint(lng,lat){
     const c=DATA.valueAt(species,hour,lng,lat); if(!isFinite(c))return;
     const aqi=aqiOf(species,c),ci=catIndex(aqi),cat=CATS[ci],unit=DATA.units(species),spn=species==='pm'?'PM2.5':'Ozone';
     const sp=buildSpark(lng,lat,null);
-    const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([lng,lat]).setHTML(
+    const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([lng,lat]).setHTML(
       `<p class="pop-t">${spn} · 72-h forecast</p>${sp?sp.html:
        `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
         <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`}`).addTo(map);
@@ -833,7 +838,7 @@ function queryPoint(lng,lat){
     const apm=isFinite(pm)?aqiOf('pm',pm):-1, ao3=isFinite(o3)?aqiOf('o3',o3):-1;
     if(apm<0&&ao3<0)return;
     const aqi=Math.max(apm,ao3),ci=catIndex(aqi),cat=CATS[ci],who=apm>=ao3?'PM2.5':'Ozone';
-    new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([lng,lat]).setHTML(
+    new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([lng,lat]).setHTML(
       `<p class="pop-t">${DATA.daily.days[dayIdx].label} · daily AQI</p>
        <div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
        <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>
@@ -878,7 +883,7 @@ function siteClick(s){
   let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
     <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
   const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`):null;
-  const popup=new maplibregl.Popup({offset:12,closeButton:false,maxWidth:'372px'}).setLngLat([s.lon,s.lat]).setHTML(
+  const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
     `<p class="pop-t">${esc(s.name)}</p>${detail}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
