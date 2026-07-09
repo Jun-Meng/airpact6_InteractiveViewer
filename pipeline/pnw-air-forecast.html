@@ -922,13 +922,13 @@ function recolorMonitors(){
     if(OBS_SER){
       const v=obsAtTime(mk);
       if(v!=null) col=(colorMode==='conc'&&view==='hourly')?concColor(species,v):rampColor(aqiOf(species,v));
-      // no obs at this hour (future / station gap): gray dot
+      // no obs at this hour (future / station gap): hollow ring, model shows through
     }else{ // series not loaded yet: latest reading (static fallback)
       const aqi=obsAQI(o);
       if(o&&colorMode==='conc'&&isFinite(+o.v)) col=concColor(species,+o.v);
       else if(aqi>=0) col=rampColor(aqi);
     }
-    mk.el.style.background=col?rgb(col):'#888';
+    mk.el.style.background=col?rgb(col):(OBS_SER?'transparent':'#888');
     mk.el.style.display=(show.monitors&&(o||siteSeries(mk)))?'block':'none';});
 }
 
