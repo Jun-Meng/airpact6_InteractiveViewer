@@ -87,6 +87,21 @@ echo "  archived cycles:$ARCHIVED"
 
 # social-preview image for link cards (LinkedIn/Twitter og:image; 1200x627 png)
 [ -f "$(dirname "$VIEWER")/og-preview.png" ] && cp "$(dirname "$VIEWER")/og-preview.png" "$SITE/og-preview.png"
+
+# robots.txt: without it, Pages' index-fallback serves HTML at /robots.txt,
+# which some crawlers (incl. LinkedIn's) treat as "do not crawl".
+cat > "$SITE/robots.txt" <<'ROB'
+User-agent: *
+Allow: /
+ROB
+
+# real 404 page: its presence also disables the serve-index-for-every-path
+# fallback, so missing assets return proper 404s to crawlers.
+cat > "$SITE/404.html" <<'NF'
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Not found</title></head>
+<body style="font-family:sans-serif;background:#0b0f12;color:#e8eef4;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<p>Page not found &mdash; <a href="/" style="color:#5b9bec">Northwest Air Quality Forecast</a></p></body></html>
+NF
 if [ -f "$STAGE_ROOT/verification/summary.json" ]; then
   mkdir -p "$SITE/data/verification"
   cp "$STAGE_ROOT/verification/summary.json" "$SITE/data/verification/"
