@@ -913,18 +913,17 @@ function obsAtTime(mk){
 function recolorMonitors(){
   monMarkers.forEach(mk=>{
     const o=mk.site[species];
-    let col=null,dim=false;
+    let col=null;
     if(OBS_SER){
       const v=obsAtTime(mk);
       if(v!=null) col=(colorMode==='conc'&&view==='hourly')?concColor(species,v):rampColor(aqiOf(species,v));
-      else dim=true;
+      // no obs at this hour (future / station gap): gray dot
     }else{ // series not loaded yet: latest reading (static fallback)
       const aqi=obsAQI(o);
       if(o&&colorMode==='conc'&&isFinite(+o.v)) col=concColor(species,+o.v);
       else if(aqi>=0) col=rampColor(aqi);
     }
     mk.el.style.background=col?rgb(col):'#888';
-    mk.el.style.opacity=dim?'0.25':'';
     mk.el.style.display=(show.monitors&&(o||siteSeries(mk)))?'block':'none';});
 }
 
