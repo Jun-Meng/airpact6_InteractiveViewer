@@ -23,7 +23,7 @@ API key: env AIRNOW_API_KEY, or parsed from ~/.airnow_env
          (line: export AIRNOW_API_KEY=...). Free key: https://docs.airnowapi.org
 """
 
-import argparse, json, math, os, re, sys, urllib.request, urllib.parse
+import argparse, json, math, os, re, sys, time, urllib.request, urllib.parse
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -52,23 +52,37 @@ def api_key():
     return k
 
 
-def fetch_obs(day, key):
-    """Hourly AirNow rows for local day `day` plus 7 h spillover (UTC window),
-    so MDA8 windows starting 17:00-23:00 local have their full 8 hours."""
-    t0 = datetime.combine(day, datetime.min.time(), LOCAL_TZ).astimezone(timezone.utc)
-    t1 = t0 + timedelta(hours=30)
+def _fetch_range(t_start, t_end, key):
+    """One AirNow /aq/data call. KEEP SPANS <= ~24 h — the API 502s on domain-wide
+    queries much larger than a day (learned the hard way, twice)."""
     url = ("https://www.airnowapi.org/aq/data/?"
            + urllib.parse.urlencode({
-               "startDate": t0.strftime("%Y-%m-%dT%H"),
-               "endDate": t1.strftime("%Y-%m-%dT%H"),
+               "startDate": t_start.strftime("%Y-%m-%dT%H"),
+               "endDate": t_end.strftime("%Y-%m-%dT%H"),
                "parameters": "PM25,OZONE", "BBOX": BBOX,
                "dataType": "B", "format": "application/json",
                "verbose": "1", "monitorType": "0",
                "includerawconcentrations": "0", "API_KEY": key}))
-    with urllib.request.urlopen(url, timeout=120) as r:
-        rows = json.load(r)
-    if not isinstance(rows, list):
-        raise RuntimeError(f"unexpected AirNow payload: {str(rows)[:200]}")
+    last = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as r:
+                rows = json.load(r)
+            if not isinstance(rows, list):
+                raise RuntimeError(f"unexpected AirNow payload: {str(rows)[:200]}")
+            return rows
+        except Exception as e:            # transient 502s are common; back off and retry
+            last = e
+            time.sleep(10 * (attempt + 1))
+    raise last
+
+
+def fetch_obs(day, key):
+    """Hourly AirNow rows for local day `day` plus 7 h spillover, fetched as
+    two <=24 h chunks (MDA8 windows starting 17:00-23:00 need the spillover)."""
+    t0 = datetime.combine(day, datetime.min.time(), LOCAL_TZ).astimezone(timezone.utc)
+    rows = _fetch_range(t0, t0 + timedelta(hours=23), key)
+    rows += _fetch_range(t0 + timedelta(hours=24), t0 + timedelta(hours=30), key)
     return rows, t0
 
 
