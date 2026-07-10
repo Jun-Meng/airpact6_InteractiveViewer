@@ -42,5 +42,6 @@ Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md` (full detail there).
 - Deployed + confirmed live: obs layer, conc default, archive selector, gzip, staleness banner, sparklines with obs curve (chunked ≤24 h obs-series fetches — AirNow dies on bigger windows)
 - Verification (`/verify.html` + nightly `verify_airnow.py`): set up 07-08 — confirm it shows data next session
 - Built, NOT deployed: permalinks (hash state) + find-a-place (Nominatim search + geolocate) — Jun to push/pull/republish, then test per worklog
-- Agreed next: HMS smoke + FIRMS fire overlay; then verification badge in popups, publish-failure email, MDA8
+- Agreed next: HMS smoke + FIRMS fire overlay; then verification badge in popups, publish-failure email
+- Queued for ~end of July (needs a full month of forecasts; archives start 06-27): **monthly statistics** — monthly roll-ups of verification (bias/RMSE/r/exceedances per month, per site/species/lead), likely a section or tab on /verify.html; history/*.json already retains everything needed
 - Key API gotchas: AirNow /aq/data max ~24 h per domain-wide query; CF edge cache survives deploys (id-matching fallback exists)
