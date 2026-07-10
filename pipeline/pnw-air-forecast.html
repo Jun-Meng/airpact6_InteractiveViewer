@@ -443,9 +443,7 @@ function buildSyntheticData(){
     cellValue:(sp,h,i,j)=>{const[lon,lat]=ll(i,j);return field(sp,h,lon,lat);},
     valueAt:(sp,h,lon,lat)=>field(sp,h,lon,lat),
     epoch:(h)=>base.getTime()+h*3600e3,
-    timeInfo:(h)=>{const d=new Date(base.getTime()+h*3600e3);
-      return{time:d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false}),
-             date:`${d.toLocaleDateString(undefined,{weekday:'short'})} ${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`};},
+    timeInfo:(h)=>ptTimeInfo(new Date(base.getTime()+h*3600e3)),
     daily:{nDays:3,days,
       conc:(metric,day,i,j)=>dailyGrid(metric,day)[j*W+i],
       at:(metric,day,lon,lat)=>{const i=Math.round((lon-west)/(east-west)*W-0.5),j=Math.round((north-lat)/(north-south)*H-0.5);
@@ -453,6 +451,13 @@ function buildSyntheticData(){
   };
 }
 
+/* all displayed clock/axis times are Pacific (matches AirNow obs timestamps) */
+function ptTimeInfo(d){
+  const PT='America/Los_Angeles';
+  return{time:d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:PT}),
+         date:`${d.toLocaleDateString('en-US',{weekday:'short',timeZone:PT})} ${d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:PT})}`,
+         tz:(d.toLocaleTimeString('en-US',{timeZone:PT,timeZoneName:'short'}).split(' ').pop())||'PT'};
+}
 function buildRealData(mf,arrs){
   const W=mf.grid.width,H=mf.grid.height,bbox=mf.bbox,nH=mf.hours.length,hours=mf.hours;
   const M=maplibregl.MercatorCoordinate;
@@ -475,9 +480,7 @@ function buildRealData(mf,arrs){
     cellValue:(sp,h,i,j)=>dec(arrs[sp],h*H*W,i,j),
     valueAt:(sp,h,lon,lat)=>{const[i,j]=toIJ(lon,lat);return(i<0||i>=W||j<0||j>=H)?NaN:dec(arrs[sp],h*H*W,i,j);},
     epoch:(h)=>new Date(hours[h].local).getTime(),
-    timeInfo:(h)=>{const d=new Date(hours[h].local);
-      return{time:d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false}),
-             date:`${d.toLocaleDateString(undefined,{weekday:'short'})} ${d.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`};},
+    timeInfo:(h)=>ptTimeInfo(new Date(hours[h].local)),
     daily};
 }
 
@@ -1026,7 +1029,7 @@ function updateReadingDaily(r){
 function updateClock(){
   if(view==='hourly'){
     const t=DATA.timeInfo(hour);
-    document.getElementById('validTime').textContent=t.time;
+    document.getElementById('validTime').textContent=t.time+' '+(t.tz||'');
     document.getElementById('validDate').textContent=t.date;
     document.getElementById('hrNum').textContent='+'+String(hour).padStart(2,'0');
     document.getElementById('tagSp').textContent=species==='pm'?'PM2.5':'Ozone';
