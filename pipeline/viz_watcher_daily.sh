@@ -5,6 +5,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --output=/data/project/airpact/jmeng/Visualization/logs/viz_watcher_%j.log
+#SBATCH --mail-type=FAIL,TIMEOUT
+#SBATCH --mail-user=jun.meng@dal.ca
 # ============================================================
 # viz_watcher_daily.sh — self-rearming watcher for the air quality viewer.
 #
@@ -28,6 +30,7 @@ MAX_POLLS=12              # 12 * 30 min = 6 h polling window
 INTERVAL=1800            # 30 min
 
 POLL=0
+OUTCOME=none   # none = polling window exhausted -> job exits 1 -> SLURM FAIL email
 
 echo "[$(date)] viz watcher start on $(hostname)"
 
@@ -44,6 +47,7 @@ while [ $POLL -lt $MAX_POLLS ]; do
 
     if [ -f "$WEBOUT/$CYCLE/manifest.json" ]; then
         echo "[$(date)] newest cycle $CYCLE already published; done for today"
+        OUTCOME=ok
         break
     fi
 
@@ -51,7 +55,11 @@ while [ $POLL -lt $MAX_POLLS ]; do
     O3N=$(ls "$NEWEST"/O3_only/O3_ACONC_*.nc  2>/dev/null | wc -l)
     if [ "$PMN" -ge 3 ] && [ "$O3N" -ge 3 ]; then
         echo "[$(date)] cycle $CYCLE ready (PM=$PMN O3=$O3N) -> submitting post-process + publish"
-        sbatch "$PIPE/postprocess_and_publish.sh" "$CYCLE"
+        if sbatch "$PIPE/postprocess_and_publish.sh" "$CYCLE"; then
+            OUTCOME=ok
+        else
+            echo "[$(date)] ERROR: sbatch submit of postprocess_and_publish failed"
+        fi
         break
     fi
 
@@ -60,6 +68,12 @@ while [ $POLL -lt $MAX_POLLS ]; do
 done
 
 # re-arm for tomorrow at the fixed time (self-perpetuating; no cron needed)
+# ALWAYS re-arm before signalling failure — a missed day must not stop the chain.
 echo "[$(date)] re-arming for tomorrow $ARM_TIME"
 sbatch --begin="tomorrow $ARM_TIME" "$SELF"
+
+if [ "$OUTCOME" != "ok" ]; then
+    echo "[$(date)] no cycle published today (window exhausted or submit failed) -> exiting 1 for SLURM FAIL email"
+    exit 1
+fi
 echo "[$(date)] watcher done"

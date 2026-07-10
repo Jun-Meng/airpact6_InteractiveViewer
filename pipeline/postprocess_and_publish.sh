@@ -5,6 +5,8 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --output=/data/project/airpact/jmeng/Visualization/logs/ap6_postpub_%j.log
+#SBATCH --mail-type=FAIL,TIMEOUT
+#SBATCH --mail-user=jun.meng@dal.ca
 # ============================================================
 # postprocess_and_publish.sh — final step of the AIRPACT-6 daily air quality forecast pipeline.
 # 
