@@ -910,7 +910,118 @@ function buildMonitors(){
   });
 }
 function obsAQI(o){ if(!o)return -1; return (o.aqi!=null&&o.aqi>=0)?o.aqi:(isFinite(o.v)?aqiOf(species,o.v):-1); }
+/* ---------- daily view: monitor popup comparing model vs observed day values ---------- */
+function obsDayMeanK(arr,k){ // 24-h mean of day k with hour count
+  if(!arr)return null;
+  let sum=0,c=0;
+  for(let h=k*24;h<Math.min((k+1)*24,arr.length);h++)if(arr[h]!=null){sum+=arr[h];c++;}
+  return c?{v:sum/c,n:c}:null;
+}
+function obsMDA8(arr,k){ // max 8-h running mean, windows starting in day k, >=6 valid h
+  if(!arr)return null;
+  let best=null;
+  for(let w=k*24;w<Math.min((k+1)*24,arr.length);w++){
+    let s=0,c=0;
+    for(let h=w;h<w+8&&h<arr.length;h++)if(arr[h]!=null){s+=arr[h];c++;}
+    if(c>=6){const m=s/c;if(best==null||m>best)best=m;}
+  }
+  return best==null?null:{v:best};
+}
+function obsDayStat(site,k){ // observed day value in the daily metric of dailyPol
+  if(dailyPol==='pm')return obsDayMeanK(site.pm,k);
+  if(dailyPol==='o3')return obsMDA8(site.o3,k);
+  const mp=obsDayMeanK(site.pm,k), mo=obsMDA8(site.o3,k);
+  const ap=mp?aqiOf('pm',mp.v):-1, ao=mo?aqiOf('o3',mo.v):-1;
+  return (ap<0&&ao<0)?null:{aqi:Math.max(ap,ao)};
+}
+function modelDayStat(k,lon,lat){ // model day value in the same metric
+  const pm=DATA.daily.at('pm',k,lon,lat), o3=DATA.daily.at('o3',k,lon,lat);
+  if(dailyPol==='all'){
+    const ap=isFinite(pm)?aqiOf('pm',pm):-1, ao=isFinite(o3)?aqiOf('o3',o3):-1;
+    return (ap<0&&ao<0)?null:{aqi:Math.max(ap,ao)};
+  }
+  const c=dailyPol==='pm'?pm:o3;
+  return isFinite(c)?{v:c}:null;
+}
+function siteClickDaily(s){
+  const days=DATA.daily.days, K=++SPARK_SEQ;
+  const isA=dailyPol==='all', pd=dailyPol==='pm'?1:0;
+  const unit=dailyPol==='pm'?'µg/m³':dailyPol==='o3'?'ppb':'AQI';
+  const metric=dailyPol==='pm'?'PM2.5 24-h mean':dailyPol==='o3'?'Ozone MDA8':'overall daily AQI';
+  new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
+    `<p class="pop-t">${esc(s.name)} · <span id="dch_${K}"></span> · ${metric}</p>
+     <div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
+       <div class="pop-v"><span id="dcm_${K}">–</span> <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRPACT6</span></div>
+       <div class="pop-v" style="color:#5b9bec"><span id="dco_${K}">–</span> <span style="font-size:11px;color:var(--ink-mute)">AIRNOW</span></div>
+     </div>
+     <div style="display:flex;gap:6px;margin:6px 0 6px;flex-wrap:wrap">
+       <span class="pop-cat" id="dcmc_${K}" style="display:none;margin-top:0"></span>
+       <span class="pop-cat" id="dcoc_${K}" style="display:none;margin-top:0"></span>
+     </div>
+     <svg id="dcs_${K}" viewBox="0 0 340 122" width="340" style="display:block;max-width:100%;cursor:pointer"></svg>
+     <div style="display:flex;justify-content:space-between;margin-top:4px">
+       <span style="font-size:10px;color:var(--ink-mute)">click a day to inspect</span>
+       <span style="font-size:10px;color:var(--ink-mute)"><span style="color:var(--ink)">&#9632;</span> AIRPACT6 &nbsp;<span style="color:#5b9bec">&#9632;</span> AirNow obs</span>
+     </div>`).addTo(map);
+  const $=id=>document.getElementById(id+'_'+K);
+  const model=days.map((d,k)=>modelDayStat(k,s.lon,s.lat));
+  let obsSite=null, obsState='loading';
+  const val=o=>o==null?null:(isA?o.aqi:o.v);
+  const chipA=o=>o==null?null:(isA?o.aqi:aqiOf(dailyPol,o.v));
+  const setChip=(id,lbl,o)=>{
+    const el=$(id); if(!el)return;
+    const a=chipA(o);
+    if(a==null||a<0){el.style.display='none';return;}
+    const cat=CATS[catIndex(a)];
+    el.style.display='';el.style.background=rgb(cat.col);el.textContent=`${lbl}: ${cat.name} · AQI ${a}`;
+  };
+  function draw(){
+    const svg=$('dcs'); if(!svg)return;
+    const obs=days.map((d,k)=>obsSite?obsDayStat(obsSite,k):null);
+    const all=[...model,...obs].map(val).filter(v=>v!=null);
+    const mx=Math.max(1,...all)*1.15;
+    let g='';
+    days.forEach((d,k)=>{
+      const x0=32+k*104, BW=34;
+      if(k===dayIdx)g+=`<rect x="${x0-9}" y="3" width="98" height="100" rx="5" fill="rgba(91,155,236,.10)" stroke="var(--line)"/>`;
+      const mv=val(model[k]);
+      if(mv!=null){const hm=mv/mx*74;
+        g+=`<rect data-k="${k}" x="${x0}" y="${(88-hm).toFixed(1)}" width="${BW}" height="${hm.toFixed(1)}" rx="2" fill="var(--ink)"/>
+          <text x="${x0+BW/2}" y="${(83-hm).toFixed(1)}" font-size="10" text-anchor="middle" fill="var(--ink)">${mv.toFixed(isA?0:pd)}</text>`;}
+      const ov=val(obs[k]);
+      if(ov!=null){const ho=ov/mx*74;
+        g+=`<rect data-k="${k}" x="${x0+BW+6}" y="${(88-ho).toFixed(1)}" width="${BW}" height="${ho.toFixed(1)}" rx="2" fill="#5b9bec"/>
+          <text x="${x0+BW+6+BW/2}" y="${(83-ho).toFixed(1)}" font-size="10" text-anchor="middle" fill="#5b9bec">${ov.toFixed(isA?0:pd)}</text>`;}
+      else g+=`<text x="${x0+BW+6+BW/2}" y="82" font-size="9" text-anchor="middle" fill="var(--ink-faint)" transform="rotate(-90 ${x0+BW+6+BW/2} 82)">${obsState==='loading'?'loading…':'no obs yet'}</text>`;
+      g+=`<text data-k="${k}" x="${x0+BW+3}" y="116" font-size="10" text-anchor="middle" fill="${k===dayIdx?'var(--ink)':'var(--ink-mute)'}">${esc(d.label)}</text>`;
+    });
+    g+=`<line x1="20" y1="88" x2="332" y2="88" stroke="var(--line)"/>`;
+    svg.innerHTML=g;
+    $('dch').textContent=`${days[dayIdx].label} (Day ${dayIdx+1})`;
+    const m=model[dayIdx], mv=val(m);
+    $('dcm').textContent=mv!=null?mv.toFixed(isA?0:pd):'–';
+    setChip('dcmc','model',m);
+    const o=obs[dayIdx], ov=val(o);
+    $('dco').textContent=ov!=null?ov.toFixed(isA?0:pd)+((o.n&&o.n<20)?` (${o.n} h)`:''):'–';
+    setChip('dcoc','obs',o);
+  }
+  const svg=$('dcs');
+  if(svg)svg.addEventListener('click',e2=>{
+    const k=e2.target.getAttribute&&e2.target.getAttribute('data-k');
+    if(k==null)return;
+    dayIdx=+k; scrub.value=dayIdx; setScrubFill(); refresh(); draw();
+  });
+  fetchObsSeries().then(d=>{
+    obsSite=d.sites[s.id]||null;
+    if(!obsSite){const eps=1e-4;
+      for(const key in d.sites){const c=d.sites[key];
+        if(Math.abs(c.lon-s.lon)<eps&&Math.abs(c.lat-s.lat)<eps){obsSite=c;break;}}}
+    obsState=obsSite?'ok':'none'; draw();
+  }).catch(()=>{obsState='none';draw();});
+  draw();
+}
 function siteClick(s){
+  if(view==='daily'&&DATA.daily){siteClickDaily(s);return;}
   const o=s[species]; if(!o)return;
   const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
   const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
