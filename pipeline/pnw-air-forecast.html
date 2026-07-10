@@ -910,6 +910,41 @@ function buildMonitors(){
   });
 }
 function obsAQI(o){ if(!o)return -1; return (o.aqi!=null&&o.aqi>=0)?o.aqi:(isFinite(o.v)?aqiOf(species,o.v):-1); }
+/* ---------- per-site verification badge (30-day skill from data/verification/sites.json) ---------- */
+let SITE_SKILL=null;
+function fetchSiteSkill(){
+  if(SITE_SKILL)return SITE_SKILL;
+  SITE_SKILL=fetch('data/verification/sites.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();});
+  SITE_SKILL.catch(()=>{SITE_SKILL=null;});
+  return SITE_SKILL;
+}
+const SKILL_MIN={pm:120,o3:120,m8:8};       // hide badges built on too few pairs
+const SKILL_UNIT={pm:'µg/m³',o3:'ppb',m8:'ppb'};
+const SKILL_LBL={pm:'PM2.5 hourly',o3:'ozone hourly',m8:'ozone MDA8'};
+function skillPhrase(sp,b){
+  const t=sp==='pm'?[0.5,3]:[2,6];
+  if(Math.abs(b)<t[0])return 'essentially unbiased at this site';
+  if(Math.abs(b)>t[1])return b>0?'tends to run well above obs here':'tends to run well below obs here';
+  return b>0?'runs slightly high at this site':'runs slightly clean at this site';
+}
+function attachSkill(elId,siteId,sp){
+  if(!siteId||!sp)return;
+  fetchSiteSkill().then(d=>{
+    const el=document.getElementById(elId); if(!el)return;
+    const rec=d.sites[siteId]&&d.sites[siteId][sp];
+    if(!rec||rec.n<(SKILL_MIN[sp]||120))return;
+    el.style.display='';
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin-top:8px;background:rgba(91,155,236,.06)">
+      <span style="font-size:13px;color:#5b9bec">&#9678;</span>
+      <div style="flex:1;min-width:0">
+        <p class="pop-t" style="margin:0;color:var(--ink)">${d.window_days}-day skill here: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]}</p>
+        <p class="pop-t" style="margin:2px 0 0">${SKILL_LBL[sp]} · ${rec.n.toLocaleString()} pairs · ${skillPhrase(sp,rec.b)}</p>
+      </div>
+      <a href="verify.html" style="font-size:10px;color:#5b9bec;text-decoration:none;white-space:nowrap">details &rarr;</a>
+    </div>`;
+  }).catch(()=>{});
+}
+
 /* ---------- daily view: monitor popup comparing model vs observed day values ---------- */
 function obsDayMeanK(arr,k){ // 24-h mean of day k with hour count
   if(!arr)return null;
@@ -962,7 +997,9 @@ function siteClickDaily(s){
      <div style="display:flex;justify-content:space-between;margin-top:4px">
        <span style="font-size:10px;color:var(--ink-mute)">click a day to inspect</span>
        <span style="font-size:10px;color:var(--ink-mute)"><span style="color:var(--ink)">&#9632;</span> AIRPACT6 &nbsp;<span style="color:#5b9bec">&#9632;</span> AirNow obs</span>
-     </div>`).addTo(map);
+     </div>
+     <div id="vbd_${K}" style="display:none"></div>`).addTo(map);
+  attachSkill('vbd_'+K, s.id, dailyPol==='o3'?'m8':dailyPol==='pm'?'pm':null);
   const $=id=>document.getElementById(id+'_'+K);
   const model=days.map((d,k)=>modelDayStat(k,s.lon,s.lat));
   let obsSite=null, obsState='loading';
@@ -1035,11 +1072,13 @@ function siteClick(s){
     detail=`<p class="pop-t" style="margin:2px 0 0">this site does not report ${species==='pm'?'PM2.5':'ozone'} — model forecast only</p>`;
   }
   const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`):null;
+  const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)}</p>${detail}`+
+    `<p class="pop-t">${esc(s.name)}</p>${detail}<div id="${VB}" style="display:none"></div>`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
   if(sp)sp.wire(popup);
+  attachSkill(VB,s.id,species);
 }
 /* dots follow the time bar: colored by the observation at the current hour
    (daily view: day mean); dimmed when that hour has no obs (future / gap);

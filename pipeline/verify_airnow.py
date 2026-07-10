@@ -244,12 +244,36 @@ def rebuild_summary(vdir, window):
         d = json.loads(p.read_text())
         sites.update(d["sites"])
         days.append({"date": d["date"], "rec": d["rec"], "lh": d["lh"]})
-    out = {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "window_days": window, "sites": sites, "days": days}
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    out = {"updated": now_iso, "window_days": window, "sites": sites, "days": days}
     (vdir / "summary.json").write_text(json.dumps(out, separators=(",", ":")))
     n = sum(len(d["rec"]) for d in days)
     print(f"summary.json: {len(days)} days, {len(sites)} sites, {n} site-day records, "
           f"{(vdir / 'summary.json').stat().st_size / 1e6:.2f} MB")
+
+    # small per-site 30-day skill digest for the viewer's popup badges
+    # (all leads pooled; keyed site id -> metric -> bias/rmse/n)
+    digest_days = days[-30:]
+    agg = {}
+    for d in digest_days:
+        for r in d["rec"]:
+            a = agg.setdefault((r[0], r[1]), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            for i in range(6):
+                a[i] += r[3 + i]
+    dsites = {}
+    for (sid, sp), a in agg.items():
+        n2, so, sf, soo, sff, sof = a
+        if not n2:
+            continue
+        dsites.setdefault(sid, {})[sp] = {
+            "b": round((sf - so) / n2, 2),
+            "r": round(math.sqrt(max(0.0, (sff - 2 * sof + soo) / n2)), 2),
+            "n": n2}
+    (vdir / "sites.json").write_text(json.dumps(
+        {"updated": now_iso, "window_days": min(30, len(digest_days)),
+         "sites": dsites}, separators=(",", ":")))
+    print(f"sites.json: skill digest for {len(dsites)} sites, "
+          f"{(vdir / 'sites.json').stat().st_size / 1e3:.0f} KB")
 
 
 def main():

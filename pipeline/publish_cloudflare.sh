@@ -105,6 +105,7 @@ NF
 if [ -f "$STAGE_ROOT/verification/summary.json" ]; then
   mkdir -p "$SITE/data/verification"
   cp "$STAGE_ROOT/verification/summary.json" "$SITE/data/verification/"
+  [ -f "$STAGE_ROOT/verification/sites.json" ] && cp "$STAGE_ROOT/verification/sites.json" "$SITE/data/verification/"
 fi
 
 # Pages Functions (AirNow obs proxy -> /api/obs). Needs the AIRNOW_API_KEY
@@ -129,6 +130,8 @@ cat > "$SITE/_headers" <<HDR
 /verify.html
   Cache-Control: no-cache
 /data/verification/summary.json
+  Cache-Control: no-cache
+/data/verification/sites.json
   Cache-Control: no-cache
 HDR
 
