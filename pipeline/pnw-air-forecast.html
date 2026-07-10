@@ -263,6 +263,7 @@
       <div class="seg" id="seg">
         <button data-sp="pm" class="on">PM2.5<span class="u">µg/m³</span></button>
         <button data-sp="o3">Ozone<span class="u">ppb</span></button>
+        <button data-sp="all" style="display:none">Overall<span class="u">worse of 2</span></button>
       </div>
     </div>
 
@@ -578,7 +579,7 @@ async function switchCycle(cyc){
     cv.width=DATA.W; cv.height=DATA.H;
     scrub.max=DATA.nHours-1; scrub.value=0;
     if(monMarkers.length)loadObsSeriesForDots(); // re-key obs to the new cycle's window
-    buildDayButtons(); refresh(); setScrubFill();
+    configScrub(); refresh();
     const badge=document.querySelector('.demo-badge');
     if(badge){ if(cyc===LATEST_CYCLE)badge.style.display='none';
       else{badge.style.display='';badge.textContent='Archived forecast · cycle '+cyc;
@@ -589,17 +590,15 @@ async function switchCycle(cyc){
 function banner(msg){const b=document.createElement('div');b.className='map-tag';b.style.top='auto';b.style.bottom='52px';b.style.color='var(--usg)';b.textContent=msg;document.getElementById('map-wrap').appendChild(b);}
 
 /* ---------- state ---------- */
-let view='hourly', species='pm', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
+let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
 const show={monitors:true,cities:true,states:true,counties:false};
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
 const secTime=document.getElementById('scrub').closest('.section');
-const scrubWrap=document.querySelector('.scrub-wrap');
-const transport=document.querySelector('.transport');
 secPollutant.insertAdjacentHTML('beforebegin',
   `<div class="section"><p class="label">View</p>
-   <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily AQI</button></div></div>
+   <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div></div>
    <div class="section"><p class="label">Find a place</p>
    <div style="display:flex;gap:6px">
      <input id="geoq" type="search" placeholder="City or address&hellip;" autocomplete="off"
@@ -609,7 +608,7 @@ secPollutant.insertAdjacentHTML('beforebegin',
    </div>
    <div id="geores"></div></div>`);
 secTime.insertAdjacentHTML('beforeend',
-  `<div id="daySel" style="display:none"><div class="seg" style="flex-direction:column;gap:4px" id="dayBtns"></div>
+  `<div id="daySel" style="display:none">
    <p style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin:9px 0 0;line-height:1.5">
    Overall AQI = worse of 24-hr PM2.5 and 8-hr-max ozone.</p></div>`);
 document.getElementById('seg').insertAdjacentHTML('afterend',
@@ -634,7 +633,9 @@ function render(){
     const k=(j*W+i)*4; let col=null;
     if(view==='hourly'){ const c=DATA.cellValue(species,hour,i,j);
       if(isFinite(c)) col = colorMode==='conc' ? concColor(species,c) : rampColor(aqiOf(species,c)); }
-    else { const o=dailyOverall(i,j); if(o) col=rampColor(o.aqi); }
+    else if(dailyPol==='all'){ const o=dailyOverall(i,j); if(o) col=rampColor(o.aqi); }
+    else { const c=DATA.daily.conc(dailyPol,dayIdx,i,j);
+      if(isFinite(c)) col = colorMode==='conc' ? concColor(dailyPol,c) : rampColor(aqiOf(dailyPol,c)); }
     if(!col){ d[k+3]=0; continue; }
     d[k]=col[0]; d[k+1]=col[1]; d[k+2]=col[2]; d[k+3]=235;
   }
@@ -683,7 +684,7 @@ map.on('load', async ()=>{
   scrub.max=nHours-1;
   if(!DATA.daily){ document.querySelector('#viewSeg [data-v=daily]').style.opacity=.4;
                    document.querySelector('#viewSeg [data-v=daily]').style.pointerEvents='none'; }
-  buildDayButtons(); buildMonitors(); buildCities(); buildLegend(); updateClock(); setScrubFill();
+  buildMonitors(); buildCities(); buildLegend(); updateClock(); setScrubFill();
   HASH_CYCLE=applyHash(); refresh(); HASH_READY=true;
   initArchive();
   map.on('moveend',updateHash);
@@ -853,13 +854,23 @@ function queryPoint(lng,lat){
     const pm=DATA.daily.at('pm',dayIdx,lng,lat), o3=DATA.daily.at('o3',dayIdx,lng,lat);
     const apm=isFinite(pm)?aqiOf('pm',pm):-1, ao3=isFinite(o3)?aqiOf('o3',o3):-1;
     if(apm<0&&ao3<0)return;
-    const aqi=Math.max(apm,ao3),ci=catIndex(aqi),cat=CATS[ci],who=apm>=ao3?'PM2.5':'Ozone';
+    const aqi=Math.max(apm,ao3),ci=catIndex(aqi);
+    let head,body,chipCat;
+    if(dailyPol==='all'){
+      chipCat=CATS[ci];
+      head=`${DATA.daily.days[dayIdx].label} · daily AQI`;
+      body=`<div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
+        <span class="pop-cat" style="background:${rgb(chipCat.col)}">${chipCat.name}</span>
+        <p class="pop-t" style="margin:7px 0 0">driven by ${apm>=ao3?'PM2.5':'Ozone'} · PM ${isFinite(pm)?pm.toFixed(1):'–'} µg/m³, O₃ ${isFinite(o3)?o3.toFixed(0):'–'} ppb</p>`;
+    }else{
+      const c=dailyPol==='pm'?pm:o3; if(!isFinite(c))return;
+      const a=dailyPol==='pm'?apm:ao3; chipCat=CATS[catIndex(a)];
+      head=`${DATA.daily.days[dayIdx].label} · ${dailyPol==='pm'?'PM2.5 24-h mean':'Ozone MDA8'}`;
+      body=`<div class="pop-v">${c.toFixed(dailyPol==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${dailyPol==='pm'?'µg/m³':'ppb'}</span></div>
+        <span class="pop-cat" style="background:${rgb(chipCat.col)}">${chipCat.name} · AQI ${a}</span>`;
+    }
     new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([lng,lat]).setHTML(
-      `<p class="pop-t">${DATA.daily.days[dayIdx].label} · daily AQI</p>
-       <div class="pop-v">${aqi} <span style="font-size:11px;color:var(--ink-mute)">AQI</span></div>
-       <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>
-       <p class="pop-t" style="margin:7px 0 0">driven by ${who} · PM ${isFinite(pm)?pm.toFixed(1):'–'} µg/m³, O₃ ${isFinite(o3)?o3.toFixed(0):'–'} ppb</p>
-       ${dailyBarsHTML(lng,lat)}`).addTo(map);
+      `<p class="pop-t">${head}</p>${body}${dailyBarsHTML(lng,lat)}`).addTo(map);
     updateReadingDaily({lng,lat,pm,o3,apm,ao3,aqi,ci});
   }
   hideHint();
@@ -923,21 +934,36 @@ function siteSeries(mk){
   return (mk.site.id&&OBS_SER.sites[mk.site.id])
     || OBS_SER._byll[mk.site.lon.toFixed(4)+','+mk.site.lat.toFixed(4)] || null;
 }
-function obsAtTime(mk){
-  const s=siteSeries(mk), arr=s&&s[species]; if(!arr)return null;
-  if(view==='hourly')return arr[hour]==null?null:arr[hour];
+function obsDayMean(arr){
+  if(!arr)return null;
   let sum=0,c=0;
   for(let h=dayIdx*24;h<Math.min((dayIdx+1)*24,arr.length);h++)
     if(arr[h]!=null){sum+=arr[h];c++;}
   return c?sum/c:null;
+}
+/* -> {v,sp} concentration, or {aqi} for daily Overall, or null */
+function obsAtTime(mk){
+  const s=siteSeries(mk); if(!s)return null;
+  if(view==='hourly'){
+    const arr=s[species], v=arr&&arr[hour];
+    return v==null?null:{v,sp:species};
+  }
+  if(dailyPol==='all'){
+    const mp=obsDayMean(s.pm), mo=obsDayMean(s.o3);
+    const ap=mp!=null?aqiOf('pm',mp):-1, ao=mo!=null?aqiOf('o3',mo):-1;
+    return (ap<0&&ao<0)?null:{aqi:Math.max(ap,ao)};
+  }
+  const m=obsDayMean(s[dailyPol]);
+  return m==null?null:{v:m,sp:dailyPol};
 }
 function recolorMonitors(){
   monMarkers.forEach(mk=>{
     const o=mk.site[species];
     let col=null;
     if(OBS_SER){
-      const v=obsAtTime(mk);
-      if(v!=null) col=(colorMode==='conc'&&view==='hourly')?concColor(species,v):rampColor(aqiOf(species,v));
+      const r=obsAtTime(mk);
+      if(r) col = r.aqi!=null ? rampColor(r.aqi)
+        : (colorMode==='conc' ? concColor(r.sp,r.v) : rampColor(aqiOf(r.sp,r.v)));
       // no obs at this hour (future / station gap): hollow ring, model shows through
     }else{ // series not loaded yet: latest reading (static fallback)
       const aqi=obsAQI(o);
@@ -964,9 +990,12 @@ function toggleCities(){ cityMarkers.forEach(el=>el.style.display=show.cities?'b
 function buildLegend(){
   const wrap=document.getElementById('legend'); wrap.innerHTML='';
   const titleEl=document.getElementById('legendTitle');
-  if(view==='hourly' && colorMode==='conc'){
+  const legSp=view==='daily'?dailyPol:species; // daily pm/o3 reuse the conc legends
+  if(colorMode==='conc' && legSp!=='all'){
+    const species=legSp;
     const unit=DATA.units(species);
-    titleEl.textContent=(species==='pm'?'PM2.5':'Ozone')+' concentration ('+unit+')';
+    titleEl.textContent=(species==='pm'?'PM2.5':'Ozone')
+      +(view==='daily'?(species==='pm'?' 24-h mean (':' MDA8 ('):' concentration (')+unit+')';
     if(species==='pm'){
       const cells=PM_COLORS.map(c=>`<div style="flex:1;background:${rgb(c)}"></div>`).join('');
       // boundary labels sit at the right edge of each cell (except the open-topped last band)
@@ -984,7 +1013,8 @@ function buildLegend(){
     return;
   }
   let ranges, title;
-  if(view==='daily'){ ranges=['0–50','51–100','101–150','151–200','201–300','301+']; title='Daily AQI'; }
+  if(view==='daily'){ ranges=['0–50','51–100','101–150','151–200','201–300','301+'];
+    title=dailyPol==='all'?'Daily AQI (worse of PM2.5 / O₃)':`Daily AQI — ${dailyPol==='pm'?'PM2.5':'Ozone'}`; }
   else if(species==='pm'){ ranges=['0–9','9–35','35–55','55–125','125–225','225+']; title='AQI — PM2.5 (µg/m³)'; }
   else { ranges=['0–54','55–70','71–85','86–105','106–200','200+']; title='AQI — Ozone (ppb)'; }
   CATS.forEach((c,i)=>{const d=document.createElement('div');d.className='legend-item';
@@ -994,14 +1024,6 @@ function buildLegend(){
 }
 
 /* ---------- day buttons ---------- */
-function buildDayButtons(){
-  const wrap=document.getElementById('dayBtns'); if(!wrap||!DATA.daily)return; wrap.innerHTML='';
-  DATA.daily.days.forEach((d,i)=>{const b=document.createElement('button');
-    b.textContent=`Day ${i+1} · ${d.label}`; b.className=i===dayIdx?'on':''; b.dataset.day=i;
-    b.style.flex='none'; wrap.appendChild(b);});
-  wrap.onclick=e=>{const b=e.target.closest('button');if(!b)return;dayIdx=+b.dataset.day;
-    wrap.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));refresh();};
-}
 
 /* ---------- reading panel ---------- */
 function updateReadingHourly(r){
@@ -1038,34 +1060,71 @@ function updateClock(){
     document.getElementById('validTime').textContent=d.label.split(' ')[0];
     document.getElementById('validDate').textContent=d.label.split(' ').slice(1).join(' ');
     document.getElementById('hrNum').textContent='D'+(dayIdx+1);
-    document.getElementById('tagSp').textContent='Daily AQI';
+    document.getElementById('tagSp').textContent=
+      dailyPol==='all'?'Overall AQI':(dailyPol==='pm'?'PM2.5 24-h':'Ozone MDA8');
   }
 }
 
 function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash();
   if(sparkSync&&view==='hourly')sparkSync(hour);
-  document.querySelector('.map-tag').childNodes[1].textContent = view==='hourly'?' surface forecast':' (worse of PM2.5 / O₃)'; }
+  document.querySelector('.map-tag').childNodes[1].textContent =
+    view==='hourly'?' surface forecast'
+    :dailyPol==='all'?' (worse of PM2.5 / O₃)'
+    :dailyPol==='pm'?' 24-h mean, daily':' MDA8, daily'; }
 
 /* ---------- view switching ---------- */
 function setView(v){
   view=v; if(playing)setPlay(false);
   document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   const daily=v==='daily';
-  secPollutant.style.display=daily?'none':'';
-  scrubWrap.style.display=daily?'none':'';
-  transport.style.display=daily?'none':'flex';
   document.getElementById('daySel').style.display=daily?'block':'none';
   secTime.querySelector('.label').textContent=daily?'Forecast day':'Valid time';
+  syncPollutantUI();
+  configScrub();
   refresh();
+}
+/* pollutant seg serves both views: hourly = species (pm/o3),
+   daily = dailyPol (pm/o3/all); Overall is AQI-only so conc gets locked out */
+function syncPollutantUI(){
+  const daily=view==='daily', cur=daily?dailyPol:species;
+  document.querySelectorAll('#seg button').forEach(b=>{
+    b.classList.toggle('on',b.dataset.sp===cur);
+    if(b.dataset.sp==='all')b.style.display=daily?'':'none';
+    const u=b.querySelector('.u');
+    if(u&&b.dataset.sp==='pm')u.textContent=daily?'24-h mean':'µg/m³';
+    if(u&&b.dataset.sp==='o3')u.textContent=daily?'MDA8 ppb':'ppb';
+  });
+  const lock=daily&&dailyPol==='all';
+  if(lock&&colorMode!=='aqi'){colorMode='aqi';
+    document.querySelectorAll('#colorSeg button').forEach(x=>x.classList.toggle('on',x.dataset.c==='aqi'));}
+  const cb=document.querySelector('#colorSeg [data-c=conc]');
+  if(cb){cb.style.opacity=lock?'0.35':'';cb.style.pointerEvents=lock?'none':'auto';}
 }
 
 /* ---------- controls ---------- */
 const scrub=document.getElementById('scrub');
-function setScrubFill(){ scrub.style.setProperty('--fill',(hour/(scrub.max||71)*100)+'%'); }
-scrub.addEventListener('input',()=>{hour=+scrub.value;setScrubFill();refresh();});
+const ticksEl=document.querySelector('.scrub-wrap .ticks');
+const TICKS_HOURLY=ticksEl.innerHTML;
+function setScrubFill(){ scrub.style.setProperty('--fill',(+scrub.value/(+scrub.max||1)*100)+'%'); }
+/* one slider, two modes: 72 hourly steps, or 3 daily steps in Daily AQI view */
+function configScrub(){
+  if(view==='daily'&&DATA.daily){
+    scrub.max=DATA.daily.nDays-1; scrub.value=dayIdx;
+    ticksEl.innerHTML=DATA.daily.days.map(d=>`<span>${esc(d.label)}</span>`).join('');
+  }else{
+    scrub.max=DATA.nHours-1; scrub.value=hour;
+    ticksEl.innerHTML=TICKS_HOURLY;
+  }
+  setScrubFill();
+}
+scrub.addEventListener('input',()=>{
+  if(view==='daily')dayIdx=+scrub.value; else hour=+scrub.value;
+  setScrubFill();refresh();});
 document.getElementById('viewSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(b.dataset.v);});
-document.getElementById('seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;species=b.dataset.sp;
-  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));refresh();});
+document.getElementById('seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(view==='daily')dailyPol=b.dataset.sp;
+  else{ if(b.dataset.sp==='all')return; species=b.dataset.sp; }
+  syncPollutantUI();refresh();});
 document.getElementById('colorSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;colorMode=b.dataset.c;
   document.querySelectorAll('#colorSeg button').forEach(x=>x.classList.toggle('on',x===b));refresh();});
 
@@ -1082,7 +1141,11 @@ document.querySelectorAll('.toggle').forEach(t=>{t.addEventListener('click',()=>
 const playBtn=document.getElementById('play'),playIcon=document.getElementById('playIcon');
 function setPlay(on){playing=on;
   playIcon.innerHTML=on?'<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>':'<path d="M8 5v14l11-7z"/>';
-  if(on)timer=setInterval(()=>{hour=(hour+1)%DATA.nHours;scrub.value=hour;setScrubFill();refresh();},stepMs);
+  if(on)timer=setInterval(()=>{
+    if(view==='daily'&&DATA.daily){dayIdx=(dayIdx+1)%DATA.daily.nDays;scrub.value=dayIdx;}
+    else{hour=(hour+1)%DATA.nHours;scrub.value=hour;}
+    setScrubFill();refresh();
+  },view==='daily'?Math.max(stepMs*4,900):stepMs);
   else clearInterval(timer);}
 playBtn.addEventListener('click',()=>setPlay(!playing));
 document.getElementById('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;stepMs=+b.dataset.ms;
@@ -1098,7 +1161,7 @@ function updateHash(){
   hashT=setTimeout(()=>{
     const c=map.getCenter();
     const parts=[`sp=${species}`,`view=${view}`,`c=${colorMode}`,
-      view==='daily'?`d=${dayIdx}`:`h=${hour}`,
+      view==='daily'?`d=${dayIdx}&dp=${dailyPol}`:`h=${hour}`,
       `ll=${c.lat.toFixed(3)},${c.lng.toFixed(3)}`,`z=${map.getZoom().toFixed(2)}`];
     const sel=document.getElementById('cycleSel');
     if(sel&&LATEST_CYCLE&&sel.value!==LATEST_CYCLE)parts.push(`cycle=${sel.value}`);
@@ -1117,8 +1180,9 @@ function applyHash(){ // restore state from a shared link; returns requested cyc
   const h=parseInt(p.get('h'),10);
   if(Number.isFinite(h)&&h>=0&&h<DATA.nHours){hour=h;scrub.value=h;setScrubFill();}
   const d=parseInt(p.get('d'),10);
-  if(DATA.daily&&Number.isFinite(d)&&d>=0&&d<DATA.daily.nDays){dayIdx=d;buildDayButtons();}
-  if(p.get('view')==='daily'&&DATA.daily)setView('daily');
+  if(DATA.daily&&Number.isFinite(d)&&d>=0&&d<DATA.daily.nDays)dayIdx=d;
+  const dp=p.get('dp'); if(dp==='pm'||dp==='o3'||dp==='all')dailyPol=dp;
+  if(p.get('view')==='daily'&&DATA.daily)setView('daily'); else syncPollutantUI();
   const ll=(p.get('ll')||'').split(','), z=parseFloat(p.get('z'));
   if(ll.length===2&&isFinite(+ll[0])&&isFinite(+ll[1]))
     map.jumpTo({center:[+ll[1],+ll[0]],zoom:Number.isFinite(z)?z:map.getZoom()});
