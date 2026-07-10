@@ -1022,13 +1022,18 @@ function siteClickDaily(s){
 }
 function siteClick(s){
   if(view==='daily'&&DATA.daily){siteClickDaily(s);return;}
-  const o=s[species]; if(!o)return;
+  const o=s[species]||null; // site may not report this pollutant (e.g. PM-only sites)
   const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
-  const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
-  const when=o.utc?new Date(o.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
-    month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
-  let detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
-    <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
+  let detail;
+  if(o){
+    const unit=o.unit?esc(o.unit.toLowerCase()):DATA.units(species);
+    const when=o.utc?new Date(o.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
+      month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
+    detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
+      <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
+  }else{
+    detail=`<p class="pop-t" style="margin:2px 0 0">this site does not report ${species==='pm'?'PM2.5':'ozone'} — model forecast only</p>`;
+  }
   const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`):null;
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
     `<p class="pop-t">${esc(s.name)}</p>${detail}`+
