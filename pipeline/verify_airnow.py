@@ -53,9 +53,10 @@ def api_key():
 
 
 def fetch_obs(day, key):
-    """Hourly AirNow rows covering local day `day` (UTC window, inclusive start)."""
+    """Hourly AirNow rows for local day `day` plus 7 h spillover (UTC window),
+    so MDA8 windows starting 17:00-23:00 local have their full 8 hours."""
     t0 = datetime.combine(day, datetime.min.time(), LOCAL_TZ).astimezone(timezone.utc)
-    t1 = t0 + timedelta(hours=23)
+    t1 = t0 + timedelta(hours=30)
     url = ("https://www.airnowapi.org/aq/data/?"
            + urllib.parse.urlencode({
                "startDate": t0.strftime("%Y-%m-%dT%H"),
@@ -68,7 +69,22 @@ def fetch_obs(day, key):
         rows = json.load(r)
     if not isinstance(rows, list):
         raise RuntimeError(f"unexpected AirNow payload: {str(rows)[:200]}")
-    return rows
+    return rows, t0
+
+
+def obs_mda8(series, t0):
+    """Observed MDA8 (ppb): max 8-h mean over windows starting 07:00-23:00
+    local (offsets 7-23 from local midnight t0), >= 6 valid hours per window.
+    Mirrors the model's MDA8 definition in postprocess_airquality.py."""
+    best = None
+    for w in range(7, 24):
+        vals = [series.get(w + i) for i in range(8)]
+        vals = [v for v in vals if v is not None]
+        if len(vals) >= 6:
+            m = sum(vals) / len(vals)
+            if best is None or m > best:
+                best = m
+    return best
 
 
 def load_cycle(cycle):
@@ -96,6 +112,23 @@ def load_cycle(cycle):
         a = np.fromfile(d / meta["bin"], dtype="<u2").reshape(-1, H, W)
         arrs[sp] = (a, meta["scale"], meta["nodata"])
 
+    daily = None
+    if mf.get("daily") and (d / mf["daily"]["bin"]).is_file():
+        db = np.fromfile(d / mf["daily"]["bin"], dtype="<u2").reshape(-1, H, W)
+        daily = {"arr": db, "o3_scale": mf["daily"]["o3_scale"],
+                 "nodata": mf["daily"]["nodata"],
+                 "dates": [dd["date"][:10] for dd in mf["daily"]["days"]]}
+
+    def model_mda8(date_iso, lon, lat):
+        """Model MDA8 ozone (ppb) for local date `date_iso` at a point, or None."""
+        if not daily or date_iso not in daily["dates"]:
+            return None
+        c = cell(lon, lat)
+        if c is None:
+            return None
+        u = int(daily["arr"][daily["dates"].index(date_iso) * 2 + 1, c[1], c[0]])
+        return None if u == daily["nodata"] else u / daily["o3_scale"]
+
     hour_idx = {}
     for h in mf["hours"]:
         iso = datetime.fromisoformat(h["utc"]).astimezone(timezone.utc)
@@ -109,13 +142,14 @@ def load_cycle(cycle):
         u = int(a[hidx, c[1], c[0]])
         return None if u == nodata else u / scale
 
-    return {"hours": hour_idx, "value": value}
+    return {"hours": hour_idx, "value": value, "mda8": model_mda8}
 
 
 def verify_day(day, key):
     """Build per-day stats for local day `day` (a date)."""
     d8 = day.strftime("%Y%m%d")
-    rows = fetch_obs(day, key)
+    rows, t0 = fetch_obs(day, key)
+    day_end = t0 + timedelta(hours=24)
     cycles = {}
     for ld in LEADS:
         c = (day - timedelta(days=ld - 1)).strftime("%Y%m%d")
@@ -127,6 +161,7 @@ def verify_day(day, key):
         return None
 
     sites, rec, lh = {}, {}, {}
+    o3_series = {}          # sid -> {hour offset from local midnight: ppb}
     n_pairs = 0
     for r in rows:
         sp = {"PM2.5": "pm", "OZONE": "o3"}.get(r.get("Parameter"))
@@ -138,6 +173,11 @@ def verify_day(day, key):
             st = FIPS.get(str(sid)[:2], "OTH") if str(sid)[:2].isdigit() else "OTH"
             sites[sid] = {"name": r.get("SiteName", sid), "lon": r["Longitude"],
                           "lat": r["Latitude"], "st": st}
+        t = datetime.fromisoformat(r["UTC"][:16]).replace(tzinfo=timezone.utc)
+        if sp == "o3":  # collect hourly series (incl. 7 h spillover) for obs MDA8
+            o3_series.setdefault(sid, {})[round((t - t0).total_seconds() / 3600)] = float(v)
+        if t >= day_end:
+            continue    # spillover hours feed MDA8 only, not the hourly stats
         utc = r["UTC"][:13] + ":00"
         for ld, cyc in cycles.items():
             hidx = cyc["hours"].get(utc)
@@ -155,7 +195,23 @@ def verify_day(day, key):
                 acc[3] += o * o; acc[4] += f * f; acc[5] += o * f
             n_pairs += 1
 
-    print(f"  {d8}: {n_pairs} pairs, {len(sites)} sites, leads {sorted(cycles)}")
+    # MDA8 ozone: one pair per site per lead day (regulatory daily metric)
+    date_iso, n_m8 = day.isoformat(), 0
+    for sid, series in o3_series.items():
+        o = obs_mda8(series, t0)
+        if o is None:
+            continue
+        s = sites[sid]
+        for ld, cyc in cycles.items():
+            f = cyc["mda8"](date_iso, s["lon"], s["lat"])
+            if f is None:
+                continue
+            a = rec.setdefault((sid, "m8", ld), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            a[0] += 1; a[1] += o; a[2] += f
+            a[3] += o * o; a[4] += f * f; a[5] += o * f
+            n_m8 += 1
+
+    print(f"  {d8}: {n_pairs} hourly + {n_m8} MDA8 pairs, {len(sites)} sites, leads {sorted(cycles)}")
     rnd = lambda x: round(x, 3)
     return {
         "date": d8,

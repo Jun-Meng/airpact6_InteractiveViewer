@@ -40,7 +40,7 @@ svg{display:block;width:100%}
     <p class="sub">AIRPACT6 vs AirNow · hourly pairs at monitor sites · <a href="index.html">← back to the map</a></p>
   </div>
   <div class="controls">
-    <select id="fSp"><option value="pm">PM2.5</option><option value="o3">Ozone</option></select>
+    <select id="fSp"><option value="pm">PM2.5 hourly</option><option value="o3">Ozone hourly</option><option value="m8">Ozone MDA8</option></select>
     <select id="fWin"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select>
     <select id="fSt"><option value="">All regions</option></select>
     <select id="fLd"><option value="">All lead days</option><option value="1">Day 1</option><option value="2">Day 2</option><option value="3">Day 3</option></select>
@@ -56,7 +56,8 @@ svg{display:block;width:100%}
 </div>
 <div class="grid2">
   <div class="card"><h2>Forecast vs observed <span id="su1"></span></h2><svg id="sc" viewBox="0 0 320 240"></svg></div>
-  <div class="card"><h2>Bias by forecast lead hour <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg></div>
+  <div class="card"><h2><span id="ldTitle">Bias by forecast lead hour</span> <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg>
+  <p id="exc" style="display:none;font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p></div>
 </div>
 <div class="card"><h2>Daily domain mean <span>— <span style="color:var(--blue)">●</span> observed &nbsp;<span style="color:var(--ink-mute)">—</span> forecast (selected leads)</span></h2><svg id="ts" viewBox="0 0 940 170"></svg></div>
 <div class="card"><h2>Sites with largest RMSE <span id="su3"></span></h2><div id="tbl"></div></div>
@@ -69,7 +70,8 @@ Scatter shows site-day mean pairs. Bias = forecast − observed. OTH = non-US or
 <script>
 let SUM=null;
 const $=id=>document.getElementById(id);
-const UNITS={pm:'µg/m³',o3:'ppb'};
+const UNITS={pm:'µg/m³',o3:'ppb',m8:'ppb'};
+const NAAQS_O3=70; // ppb, MDA8 standard
 fetch('data/verification/summary.json').then(r=>{if(!r.ok)throw 0;return r.json();})
   .then(s=>{SUM=s;initStates();draw();})
   .catch(()=>{$('content').style.display='none';$('empty').style.display='block';});
@@ -108,7 +110,10 @@ function draw(){
   $('k1').innerHTML=S.rmse.toFixed(F.sp==='pm'?2:1)+' <span class="u">'+u+'</span>';
   $('k2').textContent=isFinite(S.r)?S.r.toFixed(2):'–';
   $('k3').textContent=S.n.toLocaleString();
-  scatter(F);leadhour(F);tseries(F);table(F);
+  scatter(F);
+  if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);}
+  else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);}
+  tseries(F);table(F);
   $('meta').textContent='Data: '+F.days.length+' day(s) ending '+fmtd(F.days[F.days.length-1].date)
     +' · updated '+SUM.updated.replace('T',' ')+' · '+Object.keys(SUM.sites).length+' sites known';
 }
@@ -121,6 +126,11 @@ function scatter(F){
   let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
     <line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
     <text x="304" y="${Y(mx)+12}" font-size="10" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
+  if(F.sp==='m8'&&mx>NAAQS_O3){
+    s+=`<line x1="${X(NAAQS_O3)}" y1="15" x2="${X(NAAQS_O3)}" y2="210" stroke="var(--coral)" stroke-dasharray="3 3"/>
+      <line x1="36" y1="${Y(NAAQS_O3)}" x2="306" y2="${Y(NAAQS_O3)}" stroke="var(--coral)" stroke-dasharray="3 3"/>
+      <text x="${X(NAAQS_O3)+3}" y="25" font-size="10" fill="var(--coral)">${NAAQS_O3} ppb</text>`;
+  }
   pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.4" fill="var(--blue)" opacity="0.4"/>`;});
   s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
     <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
@@ -149,6 +159,32 @@ function leadhour(F){
   [0,12,24,36,48,60,71].forEach(h=>{s+=`<text x="${X(h).toFixed(1)}" y="232" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${h}</text>`;});
   s+=`<text x="171" y="218" font-size="11" fill="var(--ink-mute)" text-anchor="middle">lead hour</text>`;
   $('ld').innerHTML=s;
+}
+function leadday(F){ // MDA8 is one value per day: bars per lead day + exceedance counts
+  const by={};
+  F.recs.forEach(r=>{const a=by[r.ld]=by[r.ld]||[0,0,0];a[0]+=r.n;a[1]+=r.so;a[2]+=r.sf;});
+  const lds=Object.keys(by).map(Number).sort();
+  if(!lds.length){$('ld').innerHTML='';$('exc').style.display='none';return;}
+  const b=lds.map(l=>(by[l][2]-by[l][1])/by[l][0]);
+  const span=Math.max(0.5,...b.map(Math.abs))*1.3;
+  const Y=v=>112-v/span*90;
+  let s=`<line x1="36" y1="112" x2="306" y2="112" stroke="var(--line)"/>
+    <text x="32" y="116" font-size="10" fill="var(--ink-faint)" text-anchor="end">0</text>`;
+  lds.forEach((l,i)=>{
+    const x0=60+i*84, v=b[i], y=Y(v);
+    s+=`<rect x="${x0}" y="${Math.min(y,112).toFixed(1)}" width="48" height="${Math.abs(112-y).toFixed(1)}" rx="3" fill="var(--coral)" opacity="0.85"/>
+      <text x="${x0+24}" y="${(v>=0?y-6:y+14).toFixed(1)}" font-size="11" text-anchor="middle" fill="var(--ink)">${v>=0?'+':''}${v.toFixed(1)}</text>
+      <text x="${x0+24}" y="232" font-size="11" text-anchor="middle" fill="var(--ink-mute)">Day ${l}</text>`;
+  });
+  $('ld').innerHTML=s;
+  // categorical exceedance verification against the NAAQS
+  let obsN=0,fcN=0,hit=0,fa=0;
+  F.recs.forEach(r=>{ // n=1 per record: so/sf are the MDA8 values
+    const o=r.so/r.n>NAAQS_O3, f=r.sf/r.n>NAAQS_O3;
+    if(o)obsN++; if(f)fcN++; if(o&&f)hit++; if(!o&&f)fa++;
+  });
+  const el=$('exc'); el.style.display='';
+  el.textContent=`Exceedance site-days (MDA8 > ${NAAQS_O3} ppb): ${obsN} observed · ${fcN} forecast · ${hit} hit · ${fa} false alarm`;
 }
 function tseries(F){
   const per=F.days.map(d=>{

@@ -248,6 +248,11 @@ yesterday's AirNow hourly obs with the archived forecasts covering that day
 (lead day 1–3), stores sufficient statistics under `web_out/verification/`
 (per-day history + rolling 90-day `summary.json`), and the page computes
 bias/RMSE/correlation client-side with species/window/region/lead filters.
+Three metrics: PM2.5 hourly, ozone hourly, and **ozone MDA8** (regulatory daily
+metric — observed MDA8 computed from hourly obs with the same 07:00–23:00-start,
+≥6-valid-hour windows as the model's; one pair per site-day-lead; the page adds
+70 ppb NAAQS threshold lines, bias-by-lead-day, and exceedance hit/false-alarm
+counts). After changing metrics, re-run `--backfill` to regenerate history.
 Runs inside `postprocess_and_publish.sh` (non-fatal on failure); backfillable
 with `--backfill YYYYMMDD`.
 
