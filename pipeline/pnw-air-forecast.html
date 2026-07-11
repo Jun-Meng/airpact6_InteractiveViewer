@@ -251,10 +251,10 @@
   .map-tag .domain { color: var(--ink-faint); font-size: 9.5px; margin-left: 7px; letter-spacing:.05em; }
 
   .hint {
-    position:absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
-    background: rgba(14,19,24,.82); backdrop-filter: blur(6px); border: 1px solid var(--line);
-    border-radius: 20px; padding: 7px 15px; font-size: 11.5px; color: var(--ink-mute);
-    transition: opacity .4s; pointer-events: none;
+    position:absolute; top: 82px; left: 12px; z-index: 2;
+    background: rgba(14,19,24,.78); backdrop-filter: blur(6px); border: 1px solid var(--line);
+    border-radius: 20px; padding: 6px 14px; font-size: 11px; color: var(--ink-mute);
+    transition: opacity .4s; pointer-events: none; max-width: calc(100% - 24px);
   }
 
   /* mobile expand button */
@@ -1659,7 +1659,16 @@ playBtn.addEventListener('click',()=>setPlay(!playing));
 document.getElementById('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;stepMs=+b.dataset.ms;
   document.querySelectorAll('#speed button').forEach(x=>x.classList.toggle('on',x===b));if(playing){setPlay(false);setPlay(true);}});
 
-function hideHint(){const h=document.getElementById('hint');if(h)h.style.opacity='0';}
+function hideHint(){
+  const h=document.getElementById('hint');
+  if(h)h.style.opacity='0';
+  try{localStorage.setItem('hintSeen','1');}catch(e){}
+}
+/* onboarding hint: below the header chip, once per browser, auto-fades */
+try{
+  if(localStorage.getItem('hintSeen')==='1'){const h=document.getElementById('hint');if(h)h.style.display='none';}
+  else setTimeout(hideHint,15000);
+}catch(e){setTimeout(hideHint,15000);}
 
 /* ---------- floating legend collapse ---------- */
 function setLegendOpen(open){
