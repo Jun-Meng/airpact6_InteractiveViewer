@@ -298,10 +298,10 @@
   .sk { display: inline-block; vertical-align: -1px; }
   .sk-dot { width: 9px; height: 9px; border-radius: 50%; background: #00e400; border: 1.5px solid #0b0f12; }
   .sk-ring { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #0b0f12; box-shadow: 0 0 0 1px rgba(255,255,255,.5); }
-  .sk-dia { width: 7px; height: 7px; background: #9aa4ad; border: 1px solid #0b0f12; transform: rotate(45deg); }
+  .sk-dia { width: 9px; height: 9px; background: #6b7480; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
   .mon-dot.mon-diamond {
-    width: 9px; height: 9px; border-radius: 0; transform: rotate(45deg);
-    border-width: 1.5px; box-shadow: none; opacity: .85;
+    width: 11px; height: 11px; border: none; border-radius: 0; box-shadow: none; opacity: .85;
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
   }
   .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
@@ -1354,13 +1354,14 @@ function recolorMonitors(){
     const o=mk.site[species];
     const cap=mk.cap||{pm:!!mk.site.pm,o3:!!mk.site.o3};
     // site doesn't measure the selected pollutant at all: gray diamond
+    // (NEVER overwrite className — MapLibre's marker classes live on this element)
     if(pol!=='all'&&!cap[pol]){
-      mk.el.className='mon-dot mon-diamond';
-      mk.el.style.background='#9aa4ad';
+      mk.el.classList.add('mon-diamond');
+      mk.el.style.background='#6b7480';
       mk.el.style.display=show.monitors?'block':'none';
       return;
     }
-    mk.el.className='mon-dot';
+    mk.el.classList.remove('mon-diamond');
     let col=null;
     if(OBS_SER){
       const r=obsAtTime(mk);
