@@ -588,6 +588,7 @@ async function switchCycle(cyc){
     cv.width=DATA.W; cv.height=DATA.H;
     scrub.max=DATA.nHours-1; scrub.value=0;
     if(monMarkers.length)loadObsSeriesForDots(); // re-key obs to the new cycle's window
+    fireAvailability(cyc===LATEST_CYCLE);
     configScrub(); refresh();
     const badge=document.querySelector('.demo-badge');
     if(badge){ if(cyc===LATEST_CYCLE)badge.style.display='none';
@@ -600,7 +601,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false};
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
@@ -629,6 +630,7 @@ secOverlays.insertAdjacentHTML('beforeend',
    <div class="toggle" data-layer="class1"><span>Class I areas</span><div class="switch"></div></div>
    <div class="toggle" data-layer="tribal"><span>Tribal lands</span><div class="switch"></div></div>
    <div class="toggle" data-layer="grid"><span>Model grid (~4 km)</span><div class="switch"></div></div>
+   <div class="toggle" data-layer="fires"><span>Fire detections (VIIRS 24 h)</span><div class="switch"></div></div>
    <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>`);
 
 /* ---------- canvas ---------- */
@@ -1310,7 +1312,55 @@ document.querySelectorAll('.toggle').forEach(t=>{t.addEventListener('click',()=>
   t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
   if(k==='states'||k==='counties')setBoundaryVis();
   if(k==='class1'||k==='tribal')toggleOverlay(k);
-  if(k==='grid')toggleGrid();});});
+  if(k==='grid')toggleGrid();
+  if(k==='fires')toggleFires();});});
+
+/* ---------- VIIRS fire detections (satellite OBSERVATIONS, last 24 h; live cycle only) ---------- */
+let FIRES=null; // {t, data}
+function toggleFires(){
+  if(!show.fires){
+    if(map.getLayer('fires'))map.setLayoutProperty('fires','visibility','none');
+    hideOvTip();
+    return;
+  }
+  const fresh=FIRES&&(Date.now()-FIRES.t<15*60e3);
+  (fresh?Promise.resolve(FIRES.data)
+    :fetch('api/fires').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}))
+  .then(fc=>{
+    if(!fc||fc.type!=='FeatureCollection')throw new Error('bad payload');
+    FIRES={t:Date.now(),data:fc};
+    if(map.getSource('fires'))map.getSource('fires').setData(fc);
+    else{
+      map.addSource('fires',{type:'geojson',data:fc});
+      map.addLayer({id:'fires',type:'circle',source:'fires',
+        paint:{'circle-color':'#ff6b3d','circle-opacity':0.85,
+          'circle-stroke-color':'#7a2810','circle-stroke-width':1,
+          'circle-radius':['interpolate',['linear'],['sqrt',['max',['to-number',['get','frp']],1]],1,3,20,11]}});
+      map.on('mousemove','fires',e=>{
+        const f=e.features&&e.features[0]; if(!f||!show.fires)return;
+        const p=f.properties||{};
+        showOvTip(e.point,`${p.sat||'VIIRS'} · ${p.when||''} · FRP ${(+p.frp||0).toFixed(0)} MW${p.conf==='h'?' · high conf':p.conf==='l'?' · low conf':''}`);
+      });
+      map.on('mouseleave','fires',hideOvTip);
+    }
+    map.setLayoutProperty('fires','visibility','visible');
+  })
+  .catch(()=>{
+    show.fires=false;
+    const t=document.querySelector('[data-layer=fires]'); if(t)t.classList.remove('on');
+    banner('Fire detections unavailable');
+  });
+}
+/* fires are current observations — only meaningful over the LIVE forecast cycle */
+function fireAvailability(ok){
+  const t=document.querySelector('[data-layer=fires]'); if(!t)return;
+  if(!ok){
+    if(show.fires){show.fires=false;t.classList.remove('on');
+      if(map.getLayer('fires'))map.setLayoutProperty('fires','visibility','none');}
+    t.style.opacity='0.45';t.style.pointerEvents='none';
+    t.title='current fire detections are shown on the latest cycle only';
+  }else{t.style.opacity='';t.style.pointerEvents='';t.title='';}
+}
 
 /* ---------- model grid overlay (warped display grid, generated client-side) ---------- */
 function gridGeojson(){

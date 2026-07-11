@@ -261,8 +261,20 @@ with `--backfill YYYYMMDD`.
 `/api/overlay` (7-day edge cache, ~2 km server-side simplification), hover for
 area names.
 
+**Fire detections:** VIIRS active fires (last 24 h, all three satellites, NASA
+FIRMS Ultra Real-Time) as a toggle — proxied via `/api/fires` (30-min edge
+cache). Dots scale with FRP; hover for satellite/time/FRP. Live cycle only
+(observations, not forecast). One-time key setup: request the free map key at
+https://firms.modaps.eosdis.nasa.gov/api/map_key (enter your email; the key is
+emailed to you), then run
+`wrangler pages secret put FIRMS_MAP_KEY --project-name nw-air-forecast`
+keeping FIRMS_MAP_KEY literal — wrangler prompts "Enter a secret value:" and
+that is where the emailed key gets pasted.
+
 **Ideas:**
-- Fire overlays (HMS smoke polygons, NASA FIRMS hotspots).
+- HMS smoke polygons (on hold; needs a machine-readable source).
+- Phase 2 fires: GOES-R ABI FDC FRP (5-min cadence) via a Kamiak processing job
+  from NOAA's AWS buckets — reusable for the wildfire emission inventory work.
 - "Use my location" button + place search.
 - Shareable permalinks (cycle/species/hour/view in the URL hash).
 - Eventual mirror to `airpact.wsu.edu` — the same `web_out` artifacts drop straight in.
