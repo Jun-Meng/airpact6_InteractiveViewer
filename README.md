@@ -256,8 +256,13 @@ counts). After changing metrics, re-run `--backfill` to regenerate history.
 Runs inside `postprocess_and_publish.sh` (non-fatal on failure); backfillable
 with `--backfill YYYYMMDD`.
 
+**Reference overlays:** Class I areas (EPA OAQPS Living Atlas) and tribal lands
+(Census TIGERweb federal reservations) as lazy-loaded toggles — proxied via
+`/api/overlay` (7-day edge cache, ~2 km server-side simplification), hover for
+area names.
+
 **Ideas:**
-- Fire overlays (HMS smoke polygons, NASA FIRMS hotspots), tribal lands, Class I areas.
+- Fire overlays (HMS smoke polygons, NASA FIRMS hotspots).
 - "Use my location" button + place search.
 - Shareable permalinks (cycle/species/hour/view in the URL hash).
 - Eventual mirror to `airpact.wsu.edu` — the same `web_out` artifacts drop straight in.

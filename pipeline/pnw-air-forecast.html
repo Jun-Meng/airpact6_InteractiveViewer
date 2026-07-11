@@ -600,7 +600,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false};
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
@@ -626,6 +626,8 @@ const secOverlays=document.querySelector('[data-layer=monitors]').closest('.sect
 secOverlays.insertAdjacentHTML('beforeend',
   `<div class="toggle on" data-layer="states"><span>State lines</span><div class="switch"></div></div>
    <div class="toggle" data-layer="counties"><span>County lines</span><div class="switch"></div></div>
+   <div class="toggle" data-layer="class1"><span>Class I areas</span><div class="switch"></div></div>
+   <div class="toggle" data-layer="tribal"><span>Tribal lands</span><div class="switch"></div></div>
    <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>`);
 
 /* ---------- canvas ---------- */
@@ -1304,7 +1306,60 @@ opacitySlider.addEventListener('input',()=>{opacityVal=+opacitySlider.value/100;
 
 document.querySelectorAll('.toggle').forEach(t=>{t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
   t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
-  if(k==='states'||k==='counties')setBoundaryVis();});});
+  if(k==='states'||k==='counties')setBoundaryVis();
+  if(k==='class1'||k==='tribal')toggleOverlay(k);});});
+
+/* ---------- reference overlays: Class I areas + tribal lands (lazy, via /api/overlay) ---------- */
+const OVL={
+  tribal:{col:'#1D9E75',fillOp:0.15,dash:null,label:'Tribal lands'},
+  class1:{col:'#8b6fe0',fillOp:0.12,dash:[3,2],label:'Class I areas'}
+};
+let ovTip=null;
+function toggleOverlay(k){
+  if(map.getLayer(k+'-fill')){
+    ['-fill','-line'].forEach(s=>map.setLayoutProperty(k+s,'visibility',show[k]?'visible':'none'));
+    hideOvTip();
+    return;
+  }
+  if(!show[k])return;
+  fetch('api/overlay?name='+k)
+    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+    .then(gj=>{
+      if(!gj||gj.type!=='FeatureCollection')throw new Error('bad payload');
+      if(map.getSource(k))return;
+      map.addSource(k,{type:'geojson',data:gj});
+      const o=OVL[k];
+      map.addLayer({id:k+'-fill',type:'fill',source:k,
+        paint:{'fill-color':o.col,'fill-opacity':o.fillOp}});
+      map.addLayer({id:k+'-line',type:'line',source:k,
+        paint:Object.assign({'line-color':o.col,'line-width':1.4},
+          o.dash?{'line-dasharray':o.dash}:{})});
+      map.on('mousemove',k+'-fill',e=>{
+        const f=e.features&&e.features[0]; if(!f||!show[k])return;
+        const p=f.properties||{};
+        showOvTip(e.point,(p.NAME||'')+(k==='class1'&&p.STATE?` (${p.STATE})`:''));
+      });
+      map.on('mouseleave',k+'-fill',hideOvTip);
+    })
+    .catch(()=>{
+      show[k]=false;
+      const t=document.querySelector(`[data-layer=${k}]`); if(t)t.classList.remove('on');
+      banner(OVL[k].label+' overlay unavailable');
+    });
+}
+function showOvTip(pt,txt){
+  if(!txt)return;
+  if(!ovTip){
+    ovTip=document.createElement('div');
+    ovTip.style.cssText='position:absolute;z-index:5;pointer-events:none;background:rgba(14,19,24,.85);'+
+      'border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-family:var(--mono);font-size:10px;color:var(--ink)';
+    document.getElementById('map-wrap').appendChild(ovTip);
+  }
+  ovTip.style.display='block';
+  ovTip.style.left=(pt.x+12)+'px'; ovTip.style.top=(pt.y+8)+'px';
+  ovTip.textContent=txt;
+}
+function hideOvTip(){ if(ovTip)ovTip.style.display='none'; }
 
 const playBtn=document.getElementById('play'),playIcon=document.getElementById('playIcon');
 function setPlay(on){playing=on;
