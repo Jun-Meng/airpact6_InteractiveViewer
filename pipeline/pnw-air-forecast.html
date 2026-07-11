@@ -290,6 +290,19 @@
     width: 12px; height: 12px; border-radius: 50%; border: 2px solid #0b0f12;
     box-shadow: 0 0 0 2px rgba(255,255,255,.7);
   }
+  .tag-sites {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 8.5px; color: var(--ink-mute); margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+  .sk { display: inline-block; vertical-align: -1px; }
+  .sk-dot { width: 9px; height: 9px; border-radius: 50%; background: #00e400; border: 1.5px solid #0b0f12; }
+  .sk-ring { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #0b0f12; box-shadow: 0 0 0 1px rgba(255,255,255,.5); }
+  .sk-dia { width: 7px; height: 7px; background: #9aa4ad; border: 1px solid #0b0f12; transform: rotate(45deg); }
+  .mon-dot.mon-diamond {
+    width: 9px; height: 9px; border-radius: 0; transform: rotate(45deg);
+    border-width: 1.5px; box-shadow: none; opacity: .85;
+  }
   .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
   .tag-transport .play svg { width: 13px; height: 13px; }
@@ -387,6 +400,12 @@
         <span id="speedChip" title="animation speed">1&times;</span>
       </div>
       <div class="ticks"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>72h</span></div>
+      <div class="tag-sites" id="tagSites" style="display:none">
+        <span style="color:var(--ink-faint)">sites:</span>
+        <span><span class="sk sk-dot"></span> obs</span>
+        <span><span class="sk sk-ring"></span> no obs this hour</span>
+        <span id="skNoWrap"><span class="sk sk-dia"></span> <span id="skNo">no PM2.5 sensor</span></span>
+      </div>
     </div>
     <div class="map-tag-mini" id="mapTagMini" style="display:none" title="expand controls">
       <button class="play" id="playMini" aria-label="Play forecast">
@@ -1092,8 +1111,15 @@ function buildMonitors(){
     d.sites.forEach(s=>{
       const el=document.createElement('div'); el.className='mon-dot';
       new maplibregl.Marker({element:el}).setLngLat([s.lon,s.lat]).addTo(map);
+      const mk={el,site:s,cap:{pm:!!s.pm,o3:!!s.o3}};
       el.addEventListener('click',ev=>{ev.stopPropagation();siteClick(s);});
-      monMarkers.push({el,site:s});
+      el.addEventListener('mouseenter',()=>{
+          const c=mk.cap;
+        const caps=c.pm&&c.o3?'PM2.5 + O₃':c.pm?'PM2.5 only':c.o3?'O₃ only':'—';
+        showOvTip(map.project([s.lon,s.lat]),`${s.name} · measures ${caps}`);
+      });
+      el.addEventListener('mouseleave',hideOvTip);
+      monMarkers.push(mk);
     });
     recolorMonitors();
     loadObsSeriesForDots();
@@ -1283,7 +1309,16 @@ function loadObsSeriesForDots(){
     d._byll={};
     Object.keys(d.sites).forEach(k=>{const s=d.sites[k];
       d._byll[s.lon.toFixed(4)+','+s.lat.toFixed(4)]=s;});
-    OBS_SER=d; recolorMonitors();
+    OBS_SER=d;
+    // capability = latest obs keys ∪ any data in the hourly series
+    monMarkers.forEach(mk=>{
+      const ser=siteSeries(mk);
+      mk.cap={
+        pm:!!(mk.site.pm||(ser&&ser.pm&&ser.pm.some(v=>v!=null))),
+        o3:!!(mk.site.o3||(ser&&ser.o3&&ser.o3.some(v=>v!=null)))
+      };
+    });
+    recolorMonitors();
   }).catch(()=>{});
 }
 function siteSeries(mk){
@@ -1314,14 +1349,24 @@ function obsAtTime(mk){
   return m==null?null:{v:m,sp:dailyPol};
 }
 function recolorMonitors(){
+  const pol=view==='daily'?dailyPol:species;
   monMarkers.forEach(mk=>{
     const o=mk.site[species];
+    const cap=mk.cap||{pm:!!mk.site.pm,o3:!!mk.site.o3};
+    // site doesn't measure the selected pollutant at all: gray diamond
+    if(pol!=='all'&&!cap[pol]){
+      mk.el.className='mon-dot mon-diamond';
+      mk.el.style.background='#9aa4ad';
+      mk.el.style.display=show.monitors?'block':'none';
+      return;
+    }
+    mk.el.className='mon-dot';
     let col=null;
     if(OBS_SER){
       const r=obsAtTime(mk);
       if(r) col = r.aqi!=null ? rampColor(r.aqi)
         : (colorMode==='conc' ? concColor(r.sp,r.v) : rampColor(aqiOf(r.sp,r.v)));
-      // no obs at this hour (future / station gap): hollow ring, model shows through
+      // measures it, but no obs at this hour (future / gap): hollow ring
     }else{ // series not loaded yet: latest reading (static fallback)
       const aqi=obsAQI(o);
       if(o&&colorMode==='conc'&&isFinite(+o.v)) col=concColor(species,+o.v);
@@ -1329,6 +1374,16 @@ function recolorMonitors(){
     }
     mk.el.style.background=col?rgb(col):(OBS_SER?'transparent':'#888');
     mk.el.style.display=(show.monitors&&(o||siteSeries(mk)))?'block':'none';});
+  updateSiteKey();
+}
+function updateSiteKey(){
+  const el=document.getElementById('tagSites'); if(!el)return;
+  el.style.display=(show.monitors&&MON_OK&&monMarkers.length)?'flex':'none';
+  const pol=view==='daily'?dailyPol:species;
+  const wrapEl=document.getElementById('skNoWrap');
+  if(wrapEl)wrapEl.style.display=pol==='all'?'none':'';
+  const lbl=document.getElementById('skNo');
+  if(lbl&&pol!=='all')lbl.textContent='no '+(pol==='pm'?'PM2.5':'O₃')+' sensor';
 }
 
 /* ---------- cities ---------- */
