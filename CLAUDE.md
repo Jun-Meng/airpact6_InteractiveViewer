@@ -37,9 +37,9 @@ GitHub push does NOT deploy — deploy is always wrangler from Kamiak.
 - Secrets: `wrangler pages secret put NAME` — NAME stays literal, key is pasted at the prompt
 - AirNow `/aq/data`: `dataType=B` returns BOTH concentration (`Value`) and AQI; -999 = missing
 
-## Status (as of end of 2026-07-08)
-Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md` (full detail there).
-- ALL deployed + confirmed live: obs layer + dynamic dots (hollow ring = no obs), sparklines w/ obs curve, archive selector, gzip, staleness banner, permalinks, find-a-place, Pacific-time clock + map clock chip, Daily tab (pollutant selector PM/O3/Overall, day slider+play, model-vs-obs monitor popup w/ obs MDA8), verification `/verify.html` (PM hourly / O3 hourly / O3 MDA8 w/ NAAQS exceedance counts, backfilled from 06-27), per-site skill badges in popups (sites.json digest), SLURM failure email on watcher + publish jobs
-- Next up: **HMS smoke + FIRMS fire overlay** (task #16, research not started — satepsanone was fetch-blocked from sandbox once; find alternate source/proxy)
-- Queued ~Aug 1 (needs a full forecast month; archives start 06-27): **monthly statistics** — monthly verification roll-ups on /verify.html; history/*.json already retains everything needed
-- Key API gotchas: AirNow /aq/data max ~24 h per domain-wide query (bit us TWICE); CF edge cache survives deploys; LinkedIn preview cards remain flaky — manual image attach recommended
+## Status (as of end of 2026-07-10)
+Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md` (detail; later sections span → 07-10), `2026-07-10.md` (consolidated summary + engineering rules — READ THIS ONE FIRST).
+- Everything shipped + confirmed except final batch (highways removal / topo basemap / overlay panel / smoke — verify deployed next session). Full feature list in 2026-07-10.md.
+- Viewer now has: obs layer w/ dynamic dots + obs curves, sparkline popups, archive, verification (3 metrics incl. MDA8 + exceedances) + per-site badges, HMS smoke + clustered VIIRS fires, Class I/tribal/grid overlays, collapsible overlay panel, topo basemap, permalinks, find-a-place, Pacific-time UI, failure emails.
+- Queue: Phase 2 GOES-R FDC FRP (Kamiak job, task #25); monthly statistics (~Aug 1).
+- Engineering rules that bit us (details in 2026-07-10.md): AirNow ≤24 h queries; never JSON.parse big bodies in Workers (stream+peek); CF cache survives deploys; test with EXACT prod params; popups are dark-themed.
