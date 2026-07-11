@@ -680,7 +680,7 @@ const map=new maplibregl.Map({
       tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
       tileSize:256, attribution:'© OpenStreetMap contributors © CARTO'}},
     layers:[{id:'base',type:'raster',source:'base'}]},
-  center:[-118,45.5], zoom:4.6, minZoom:3.5, maxZoom:9, attributionControl:{compact:true}});
+  center:[-118,45.5], zoom:4.6, minZoom:3.5, maxZoom:11.5, attributionControl:{compact:true}});
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
 map.addControl(new maplibregl.ScaleControl({maxWidth:90,unit:'metric'}),'bottom-left');
 
@@ -1366,7 +1366,7 @@ function toggleFires(){
         CLUSTER_CLICK=true; // suppress the forecast popup under this click
         map.getSource('fires').getClusterExpansionZoom(f.properties.cluster_id,(err,z)=>{
           if(err)return;
-          map.easeTo({center:f.geometry.coordinates,zoom:Math.min(z+0.5,9.5)});
+          map.easeTo({center:f.geometry.coordinates,zoom:Math.min(z+0.5,11)});
         });
       });
     }
