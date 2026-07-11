@@ -271,8 +271,14 @@ emailed to you), then run
 keeping FIRMS_MAP_KEY literal — wrangler prompts "Enter a secret value:" and
 that is where the emailed key gets pasted.
 
+**Smoke plumes:** NOAA HMS analyst-drawn smoke polygons (today's analysis,
+GOES-18/19 true-color, updated through the sunlit day) via the official NESDIS
+SAB Living Atlas feature service (CC0), proxied through `/api/overlay?name=smoke`
+(20-min edge cache). Light/medium/heavy densities in gray/orange/red; hover for
+density, satellite, and analysis window. Live cycle only. Note: first plumes of
+the day usually appear around local noon — an empty layer in the morning is normal.
+
 **Ideas:**
-- HMS smoke polygons (on hold; needs a machine-readable source).
 - Phase 2 fires: GOES-R ABI FDC FRP (5-min cadence) via a Kamiak processing job
   from NOAA's AWS buckets — reusable for the wildfire emission inventory work.
 - "Use my location" button + place search.

@@ -22,19 +22,24 @@ const COMMON = {
 const SOURCES = {
   tribal: {
     base: "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/AIANNHA/MapServer/2/query",
-    fields: "NAME",
+    fields: "NAME", ttl: 7 * 86400,
   },
   class1: {
     base: "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/Mandatory_Class1_Federal_Areas/FeatureServer/0/query",
-    fields: "NAME,STATE",
+    fields: "NAME,STATE", ttl: 7 * 86400,
+  },
+  // NOAA NESDIS SAB HMS smoke analysis (Living Atlas mirror, CC0). Today's
+  // analyst-drawn plumes, updated through the sunlit day -> short cache.
+  smoke: {
+    base: "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/NOAA_Satellite_Smoke_Detection_(v1)/FeatureServer/0/query",
+    fields: "Density,Satellite,Start,End_", ttl: 1200,
   },
 };
-const TTL = 7 * 86400;
 
 export async function onRequestGet(context) {
   const name = new URL(context.request.url).searchParams.get("name");
   const src = SOURCES[name];
-  if (!src) return json({ error: "name must be tribal or class1" }, 400);
+  if (!src) return json({ error: "name must be tribal, class1, or smoke" }, 400);
 
   const cache = caches.default;
   const cacheKey = new Request(new URL(`/api/overlay?name=${name}`, context.request.url));
@@ -52,7 +57,7 @@ export async function onRequestGet(context) {
   const resp = new Response(JSON.stringify(gj), {
     status: 200,
     headers: { "Content-Type": "application/json",
-               "Cache-Control": `public, max-age=${TTL}` },
+               "Cache-Control": `public, max-age=${src.ttl}` },
   });
   context.waitUntil(cache.put(cacheKey, resp.clone()));
   return resp;
