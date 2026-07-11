@@ -243,16 +243,12 @@
     border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px;
     font-family: var(--mono); font-size: 11px; color: var(--ink); pointer-events: none;
   }
-  .map-tag b { color: var(--accent); }
-  .map-clock {
-    position: absolute; top: 12px; right: 52px; z-index: 2; text-align: right;
-    background: rgba(14,19,24,.82); backdrop-filter: blur(6px);
-    border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px;
-    font-family: var(--mono); font-size: 12px; color: var(--ink); pointer-events: none;
-  }
-  .map-clock b { color: var(--accent); font-size: 14px; }
-  .map-clock span { color: var(--ink-mute); }
-  .map-tag .domain { color: var(--ink-faint); font-size: 9.5px; display:block; margin-top:2px; letter-spacing:.05em; }
+  .map-tag b { color: var(--accent); font-size: 12px; }
+  .tag-time { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
+  #mtTime { font-size: 15px; font-weight: 700; color: var(--ink); }
+  #mtDate { font-size: 11px; color: var(--ink-mute); }
+  #mtHr { font-size: 11px; font-weight: 700; color: var(--accent); }
+  .map-tag .domain { color: var(--ink-faint); font-size: 9.5px; margin-left: 7px; letter-spacing:.05em; }
 
   .hint {
     position:absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
@@ -356,8 +352,10 @@
 
   <div id="map-wrap">
     <div id="map"></div>
-    <div class="map-tag"><b id="tagSp">PM2.5</b> surface forecast<span class="domain">PNW 4 km · click to query</span></div>
-    <div class="map-clock" id="mapClock"></div>
+    <div class="map-tag">
+      <div><b id="tagSp">PM2.5</b> <span id="tagKind">surface forecast</span><span class="domain">PNW 4 km</span></div>
+      <div class="tag-time"><span id="mtTime">—</span><span id="mtDate"></span><span id="mtHr"></span></div>
+    </div>
     <div class="map-legend" id="mapLegend">
       <div class="ml-head"><span id="legendTitle">AQI — PM2.5 (µg/m³)</span><span id="legendCollapse" title="hide legend">&#9662;</span></div>
       <div id="legend"></div>
@@ -365,7 +363,7 @@
     <div class="map-legend-chip" id="legendChip" style="display:none" title="show legend">
       <span class="ml-grad"></span><span id="chipLabel">legend</span> &#9652;
     </div>
-    <div class="hint" id="hint">Click the map to read a value · drag the slider to step through 72 hours</div>
+    <div class="hint" id="hint">Hover for values · click for the 72-hour time series · drag the slider to animate</div>
     <canvas id="aqCanvas" width="288" height="256"></canvas>
   </div>
 </div>
@@ -779,6 +777,33 @@ map.on('load', async ()=>{
   HASH_CYCLE=applyHash(); refresh(); HASH_READY=true;
   initArchive();
   map.on('moveend',updateHash);
+
+  /* hover readout: live value under the cursor (feature tooltips take precedence) */
+  const FEAT_LAYERS=['smoke-fill','fires','fires-cluster','class1-fill','tribal-fill'];
+  map.on('mousemove',e=>{
+    const ids=FEAT_LAYERS.filter(id=>map.getLayer(id));
+    if(ids.length&&map.queryRenderedFeatures(e.point,{layers:ids}).length)return;
+    const{lng,lat}=e.lngLat, b=DATA.bbox;
+    if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3]){hideOvTip();return;}
+    let txt=null;
+    if(view==='hourly'){
+      const c=DATA.valueAt(species,hour,lng,lat);
+      if(isFinite(c)){const a=aqiOf(species,c),cat=CATS[catIndex(a)];
+        txt=`${c.toFixed(species==='pm'?1:0)} ${DATA.units(species)} · AQI ${a} ${cat.name}`;}
+    }else if(DATA.daily){
+      if(dailyPol==='all'){
+        const pm=DATA.daily.at('pm',dayIdx,lng,lat), o3=DATA.daily.at('o3',dayIdx,lng,lat);
+        const a=Math.max(isFinite(pm)?aqiOf('pm',pm):-1, isFinite(o3)?aqiOf('o3',o3):-1);
+        if(a>=0)txt=`AQI ${a} ${CATS[catIndex(a)].name} · daily`;
+      }else{
+        const c=DATA.daily.at(dailyPol,dayIdx,lng,lat);
+        if(isFinite(c)){const a=aqiOf(dailyPol,c);
+          txt=`${c.toFixed(dailyPol==='pm'?1:0)} ${dailyPol==='pm'?'µg/m³':'ppb'} · AQI ${a} ${CATS[catIndex(a)].name}`;}
+      }
+    }
+    if(txt)showOvTip(e.point,txt); else hideOvTip();
+  });
+  map.on('mouseout',hideOvTip);
 });
 
 /* ---------- 72-h sparkline (click-to-query popups) ---------- */
@@ -1303,26 +1328,27 @@ function updateClock(){
     document.getElementById('validDate').textContent=t.date;
     document.getElementById('hrNum').textContent='+'+String(hour).padStart(2,'0');
     document.getElementById('tagSp').textContent=species==='pm'?'PM2.5':'Ozone';
-    document.getElementById('mapClock').innerHTML=
-      `<b>${t.time} ${t.tz||''}</b><br><span>${esc(t.date)} · hr +${String(hour).padStart(2,'0')}</span>`;
+    document.getElementById('tagKind').textContent='surface forecast';
+    document.getElementById('mtTime').textContent=`${t.time} ${t.tz||''}`;
+    document.getElementById('mtDate').textContent=t.date;
+    document.getElementById('mtHr').textContent='FCST HR +'+String(hour).padStart(2,'0');
   } else if(DATA.daily){
     const d=DATA.daily.days[dayIdx];
     document.getElementById('validTime').textContent=d.label.split(' ')[0];
     document.getElementById('validDate').textContent=d.label.split(' ').slice(1).join(' ');
     document.getElementById('hrNum').textContent='D'+(dayIdx+1);
     document.getElementById('tagSp').textContent=
-      dailyPol==='all'?'Overall AQI':(dailyPol==='pm'?'PM2.5 24-h':'Ozone MDA8');
-    document.getElementById('mapClock').innerHTML=
-      `<b>${esc(d.label)}</b><br><span>Day ${dayIdx+1} of ${DATA.daily.nDays}</span>`;
+      dailyPol==='all'?'Overall AQI':(dailyPol==='pm'?'PM2.5':'Ozone');
+    document.getElementById('tagKind').textContent=
+      dailyPol==='all'?'daily (worse of PM2.5 / O₃)':(dailyPol==='pm'?'24-h mean, daily':'MDA8, daily');
+    document.getElementById('mtTime').textContent=d.label;
+    document.getElementById('mtDate').textContent=`Day ${dayIdx+1} of ${DATA.daily.nDays}`;
+    document.getElementById('mtHr').textContent='D'+(dayIdx+1);
   }
 }
 
 function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash();
-  if(sparkSync&&view==='hourly')sparkSync(hour);
-  document.querySelector('.map-tag').childNodes[1].textContent =
-    view==='hourly'?' surface forecast'
-    :dailyPol==='all'?' (worse of PM2.5 / O₃)'
-    :dailyPol==='pm'?' 24-h mean, daily':' MDA8, daily'; }
+  if(sparkSync&&view==='hourly')sparkSync(hour); }
 
 /* ---------- view switching ---------- */
 function setView(v){
