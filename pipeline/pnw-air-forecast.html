@@ -245,6 +245,13 @@
   }
   .map-tag b { color: var(--accent); font-size: 12px; }
   .map-tag { width: 302px; }
+  .tag-row1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .tag-viewseg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex: none; }
+  .tag-viewseg button {
+    font-family: var(--mono); font-size: 10px; padding: 2px 9px;
+    background: transparent; border: none; color: var(--ink-mute); cursor: pointer;
+  }
+  .tag-viewseg button.on { background: var(--accent); color: #0b0f12; font-weight: 700; }
   .tag-time { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
   .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
@@ -259,7 +266,6 @@
   #mtTime { font-size: 15px; font-weight: 700; color: var(--ink); }
   #mtDate { font-size: 11px; color: var(--ink-mute); }
   #mtHr { font-size: 11px; font-weight: 700; color: var(--accent); }
-  .map-tag .domain { color: var(--ink-faint); font-size: 9.5px; margin-left: 7px; letter-spacing:.05em; }
 
   .hint {
     position:absolute; top: 148px; left: 12px; z-index: 2;
@@ -336,7 +342,10 @@
   <div id="map-wrap">
     <div id="map"></div>
     <div class="map-tag">
-      <div><b id="tagSp">PM2.5</b> <span id="tagKind">surface forecast</span><span class="domain">PNW 4 km</span></div>
+      <div class="tag-row1">
+        <div><b id="tagSp">PM2.5</b> <span id="tagKind">surface forecast</span></div>
+        <div class="tag-viewseg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div>
+      </div>
       <div class="tag-time"><span id="mtTime">—</span><span id="mtDate"></span><span id="mtHr"></span></div>
       <div class="tag-transport">
         <button class="play" id="play" aria-label="Play forecast">
@@ -622,9 +631,7 @@ try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
 secPollutant.insertAdjacentHTML('beforebegin',
-  `<div class="section"><p class="label">View</p>
-   <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div></div>
-   <div class="section"><p class="label">Find a place</p>
+  `<div class="section"><p class="label">Find a place</p>
    <div style="display:flex;gap:6px">
      <input id="geoq" type="search" placeholder="City or address&hellip;" autocomplete="off"
        style="flex:1;min-width:0;font:12px inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:7px;padding:6px 8px;outline:none">
