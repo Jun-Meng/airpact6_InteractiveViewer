@@ -256,6 +256,19 @@
   }
   .tag-viewseg button.on { background: var(--accent); color: #0b0f12; font-weight: 700; }
   .tag-time { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
+  #tagFold { color: var(--ink-faint); cursor: pointer; font-size: 11px; padding: 0 2px; }
+  #tagFold:hover { color: var(--ink); }
+  .map-tag-mini {
+    position: absolute; top: 12px; left: 12px; z-index: 2; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(14,19,24,.85); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 16px; padding: 5px 11px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
+  }
+  .map-tag-mini b { color: var(--accent); }
+  .map-tag-mini .play { width: 18px; height: 18px; flex: 0 0 18px; }
+  .map-tag-mini .play svg { width: 9px; height: 9px; }
+  #miniHr { color: var(--accent); font-weight: 700; }
   .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
   .tag-transport .play svg { width: 13px; height: 13px; }
@@ -339,7 +352,10 @@
     <div class="map-tag">
       <div class="tag-row1">
         <div><b id="tagSp">PM2.5</b> <span id="tagKind">surface forecast</span></div>
-        <div class="tag-viewseg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="tag-viewseg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div>
+          <span id="tagFold" title="collapse">&#9652;</span>
+        </div>
       </div>
       <div class="tag-time"><span id="mtTime">—</span><span id="mtDate"></span><span id="mtHr"></span></div>
       <div class="tag-transport">
@@ -350,6 +366,13 @@
         <span id="speedChip" title="animation speed">1&times;</span>
       </div>
       <div class="ticks"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>72h</span></div>
+    </div>
+    <div class="map-tag-mini" id="mapTagMini" style="display:none" title="expand controls">
+      <button class="play" id="playMini" aria-label="Play forecast">
+        <svg id="playIconMini" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <span><b id="miniSp">PM2.5</b> · <span id="miniTime">—</span> <span id="miniHr"></span></span>
+      <span style="color:var(--ink-faint);font-size:11px">&#9662;</span>
     </div>
     <div class="map-legend" id="mapLegend">
       <div class="ml-head">
@@ -1325,6 +1348,9 @@ function updateClock(){
     document.getElementById('mtTime').textContent=`${t.time} ${t.tz||''}`;
     document.getElementById('mtDate').textContent=t.date;
     document.getElementById('mtHr').textContent='FCST HR +'+String(hour).padStart(2,'0');
+    document.getElementById('miniSp').textContent=species==='pm'?'PM2.5':'Ozone';
+    document.getElementById('miniTime').textContent=`${t.time} ${t.tz||''}`;
+    document.getElementById('miniHr').textContent='+'+String(hour).padStart(2,'0');
   } else if(DATA.daily){
     const d=DATA.daily.days[dayIdx];
     document.getElementById('tagSp').textContent=
@@ -1334,6 +1360,9 @@ function updateClock(){
     document.getElementById('mtTime').textContent=d.label;
     document.getElementById('mtDate').textContent=`Day ${dayIdx+1} of ${DATA.daily.nDays}`;
     document.getElementById('mtHr').textContent='D'+(dayIdx+1);
+    document.getElementById('miniSp').textContent=document.getElementById('tagSp').textContent;
+    document.getElementById('miniTime').textContent=d.label;
+    document.getElementById('miniHr').textContent='D'+(dayIdx+1);
   }
 }
 
@@ -1635,7 +1664,9 @@ function hideOvTip(){ if(ovTip)ovTip.style.display='none'; }
 
 const playBtn=document.getElementById('play'),playIcon=document.getElementById('playIcon');
 function setPlay(on){playing=on;
-  playIcon.innerHTML=on?'<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>':'<path d="M8 5v14l11-7z"/>';
+  const ic=on?'<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>':'<path d="M8 5v14l11-7z"/>';
+  playIcon.innerHTML=ic;
+  const pm=document.getElementById('playIconMini'); if(pm)pm.innerHTML=ic;
   if(on)timer=setInterval(()=>{
     if(view==='daily'&&DATA.daily){dayIdx=(dayIdx+1)%DATA.daily.nDays;scrub.value=dayIdx;}
     else{hour=(hour+1)%DATA.nHours;scrub.value=hour;}
@@ -1661,6 +1692,17 @@ try{
   if(localStorage.getItem('hintSeen')==='1'){const h=document.getElementById('hint');if(h)h.style.display='none';}
   else setTimeout(hideHint,15000);
 }catch(e){setTimeout(hideHint,15000);}
+
+/* ---------- map chip collapse (mirrors the legend chip pattern) ---------- */
+function setChipOpen(open){
+  document.querySelector('.map-tag').style.display=open?'':'none';
+  document.getElementById('mapTagMini').style.display=open?'none':'flex';
+  try{localStorage.setItem('chipOpen',open?'1':'0');}catch(e){}
+}
+document.getElementById('tagFold').addEventListener('click',()=>setChipOpen(false));
+document.getElementById('playMini').addEventListener('click',e=>{e.stopPropagation();setPlay(!playing);});
+document.getElementById('mapTagMini').addEventListener('click',()=>setChipOpen(true));
+try{if(localStorage.getItem('chipOpen')==='0')setChipOpen(false);}catch(e){}
 
 /* ---------- floating legend collapse ---------- */
 function setLegendOpen(open){
