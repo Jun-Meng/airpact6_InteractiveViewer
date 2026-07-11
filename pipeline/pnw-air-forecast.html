@@ -600,7 +600,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false};
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
@@ -628,6 +628,7 @@ secOverlays.insertAdjacentHTML('beforeend',
    <div class="toggle" data-layer="counties"><span>County lines</span><div class="switch"></div></div>
    <div class="toggle" data-layer="class1"><span>Class I areas</span><div class="switch"></div></div>
    <div class="toggle" data-layer="tribal"><span>Tribal lands</span><div class="switch"></div></div>
+   <div class="toggle" data-layer="grid"><span>Model grid (~4 km)</span><div class="switch"></div></div>
    <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>`);
 
 /* ---------- canvas ---------- */
@@ -884,6 +885,7 @@ function queryPoint(lng,lat){
       `<p class="pop-t">${head}</p>${body}${dailyBarsHTML(lng,lat)}`).addTo(map);
     updateReadingDaily({lng,lat,pm,o3,apm,ao3,aqi,ci});
   }
+  highlightCell(lng,lat);
   hideHint();
 }
 map.on('click', e=>queryPoint(e.lngLat.lng,e.lngLat.lat));
@@ -1307,7 +1309,51 @@ opacitySlider.addEventListener('input',()=>{opacityVal=+opacitySlider.value/100;
 document.querySelectorAll('.toggle').forEach(t=>{t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
   t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
   if(k==='states'||k==='counties')setBoundaryVis();
-  if(k==='class1'||k==='tribal')toggleOverlay(k);});});
+  if(k==='class1'||k==='tribal')toggleOverlay(k);
+  if(k==='grid')toggleGrid();});});
+
+/* ---------- model grid overlay (warped display grid, generated client-side) ---------- */
+function gridGeojson(){
+  const W=DATA.W,H=DATA.H,b=DATA.bbox,w=b[0],s=b[1],e=b[2],n=b[3];
+  const merc=la=>Math.log(Math.tan(Math.PI/4+la*Math.PI/360));
+  const inv=m=>(2*Math.atan(Math.exp(m))-Math.PI/2)*180/Math.PI;
+  const mn=merc(n),ms=merc(s),lines=[];
+  for(let i=0;i<=W;i++){const x=w+(e-w)*i/W;lines.push([[x,s],[x,n]]);}
+  for(let j=0;j<=H;j++){const la=inv(mn-(mn-ms)*j/H);lines.push([[w,la],[e,la]]);}
+  return{type:'Feature',geometry:{type:'MultiLineString',coordinates:lines}};
+}
+function toggleGrid(){
+  if(!map.getSource('modelgrid')){
+    if(!show.grid)return;
+    map.addSource('modelgrid',{type:'geojson',data:gridGeojson()});
+    map.addLayer({id:'modelgrid',type:'line',source:'modelgrid',minzoom:6.5,
+      paint:{'line-color':'#1d2630','line-width':0.6,
+        'line-opacity':['interpolate',['linear'],['zoom'],6.5,0.15,9,0.5]}});
+    map.addSource('gridcell',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addLayer({id:'gridcell-fill',type:'fill',source:'gridcell',
+      paint:{'fill-color':'#26c6da','fill-opacity':0.12}});
+    map.addLayer({id:'gridcell-line',type:'line',source:'gridcell',
+      paint:{'line-color':'#26c6da','line-width':2}});
+    return;
+  }
+  ['modelgrid','gridcell-fill','gridcell-line'].forEach(id=>
+    map.setLayoutProperty(id,'visibility',show.grid?'visible':'none'));
+  if(!show.grid)map.getSource('gridcell').setData({type:'FeatureCollection',features:[]});
+}
+function highlightCell(lng,lat){ // outline the warped cell the popup sampled
+  if(!show.grid||!map.getSource('gridcell'))return;
+  const W=DATA.W,H=DATA.H,b=DATA.bbox;
+  const M=maplibregl.MercatorCoordinate;
+  const nw=M.fromLngLat({lng:b[0],lat:b[3]}),se=M.fromLngLat({lng:b[2],lat:b[1]});
+  const m=M.fromLngLat({lng,lat});
+  const i=Math.floor((m.x-nw.x)/(se.x-nw.x)*W),j=Math.floor((m.y-nw.y)/(se.y-nw.y)*H);
+  if(i<0||i>=W||j<0||j>=H)return;
+  const xa=nw.x+(se.x-nw.x)*i/W,xb=nw.x+(se.x-nw.x)*(i+1)/W;
+  const ya=nw.y+(se.y-nw.y)*j/H,yb=nw.y+(se.y-nw.y)*(j+1)/H;
+  const ll=(x,y)=>{const c=new M(x,y,0).toLngLat();return[c.lng,c.lat];};
+  map.getSource('gridcell').setData({type:'Feature',geometry:{type:'Polygon',
+    coordinates:[[ll(xa,ya),ll(xb,ya),ll(xb,yb),ll(xa,yb),ll(xa,ya)]]}});
+}
 
 /* ---------- reference overlays: Class I areas + tribal lands (lazy, via /api/overlay) ---------- */
 const OVL={
