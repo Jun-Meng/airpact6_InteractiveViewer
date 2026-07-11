@@ -180,8 +180,11 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
     width: 320px; max-width: calc(100% - 24px);
   }
-  .ml-head { display: flex; justify-content: space-between; align-items: center;
+  .ml-head { display: flex; justify-content: space-between; align-items: center; gap: 8px;
     font-family: var(--mono); font-size: 9.5px; color: var(--ink-mute); margin-bottom: 4px; }
+  .ml-op { display: flex; align-items: center; gap: 5px; flex: none; }
+  .ml-op input[type=range] { width: 64px; height: 3px; }
+  #opVal { color: var(--ink); font-size: 9px; min-width: 26px; text-align: right; }
   #legendCollapse { cursor: pointer; color: var(--ink-faint); padding: 0 2px; }
   #legendCollapse:hover { color: var(--ink); }
   .map-legend-chip {
@@ -313,14 +316,6 @@
     </div>
 
     <div class="section">
-      <div class="row">
-        <p class="label" style="margin:0">Layer opacity</p>
-        <span class="val" id="opVal">80%</span>
-      </div>
-      <input type="range" id="opacity" min="20" max="100" value="80" step="5" />
-    </div>
-
-    <div class="section">
       <p class="label">Overlays</p>
       <div id="ovlGroups"></div>
       <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>
@@ -357,7 +352,14 @@
       <div class="ticks"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>72h</span></div>
     </div>
     <div class="map-legend" id="mapLegend">
-      <div class="ml-head"><span id="legendTitle">AQI — PM2.5 (µg/m³)</span><span id="legendCollapse" title="hide legend">&#9662;</span></div>
+      <div class="ml-head">
+        <span id="legendTitle">AQI — PM2.5 (µg/m³)</span>
+        <span class="ml-op" title="forecast layer opacity">
+          <input type="range" id="opacity" min="20" max="100" value="80" step="5" />
+          <span id="opVal">80%</span>
+        </span>
+        <span id="legendCollapse" title="hide legend">&#9662;</span>
+      </div>
       <div id="legend"></div>
     </div>
     <div class="map-legend-chip" id="legendChip" style="display:none" title="show legend">
