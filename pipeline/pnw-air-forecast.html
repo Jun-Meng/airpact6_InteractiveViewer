@@ -159,6 +159,13 @@
 
   /* toggles */
   .toggle { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; cursor: pointer; }
+  .ovl-head { display:flex; justify-content:space-between; align-items:center; padding:8px 0 5px;
+    cursor:pointer; font-size:12px; font-weight:600; color:var(--ink); border-top:1px solid var(--line); }
+  #ovlGroups .ovl-head:first-child { border-top:none; padding-top:2px; }
+  .ovl-count { font-size:9px; color:var(--accent); border:1px solid var(--accent); border-radius:8px; padding:0 5px; font-weight:700; margin-left:4px; }
+  .ovl-arrow { color:var(--ink-faint); font-size:10px; }
+  .ovl-hint { font-family:var(--mono); font-size:9.5px; color:var(--ink-faint); margin:0 0 3px; }
+  #ovlGroups .toggle { padding-left:10px; }
   .toggle:not(:last-child){ border-bottom: 1px solid var(--line-soft); }
   .toggle span { font-size: 13px; }
   .switch { width: 36px; height: 20px; border-radius: 20px; background: var(--line); position: relative; transition: background .15s; flex:0 0 36px;}
@@ -313,8 +320,8 @@
 
     <div class="section">
       <p class="label">Overlays</p>
-      <div class="toggle on" data-layer="monitors"><span>Monitor sites (obs)</span><div class="switch"></div></div>
-      <div class="toggle on" data-layer="cities"><span>City labels</span><div class="switch"></div></div>
+      <div id="ovlGroups"></div>
+      <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>
     </div>
 
     <div class="section">
@@ -623,16 +630,49 @@ secTime.insertAdjacentHTML('beforeend',
    Overall AQI = worse of 24-hr PM2.5 and 8-hr-max ozone.</p></div>`);
 document.getElementById('seg').insertAdjacentHTML('afterend',
   `<div class="seg" id="colorSeg" style="margin-top:8px"><button data-c="aqi">AQI</button><button data-c="conc" class="on">Concentration</button></div>`);
-const secOverlays=document.querySelector('[data-layer=monitors]').closest('.section');
-secOverlays.insertAdjacentHTML('beforeend',
-  `<div class="toggle on" data-layer="states"><span>State lines</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="counties"><span>County lines</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="class1"><span>Class I areas</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="tribal"><span>Tribal lands</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="grid"><span>Model grid (~4 km)</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="smoke"><span>Smoke plumes (HMS today)</span><div class="switch"></div></div>
-   <div class="toggle" data-layer="fires"><span>Fire detections (VIIRS 24 h)</span><div class="switch"></div></div>
-   <p style="margin:10px 0 0;font-size:11px"><a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a></p>`);
+/* collapsible overlay groups (order + grouping teach the obs-vs-forecast split) */
+const OVL_GROUPS=[
+  {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
+    ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)']]},
+  {id:'ref',name:'Reference layers',hint:'',open:false,items:[
+    ['states','State lines'],['counties','County lines'],['class1','Class I areas'],
+    ['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
+  {id:'map',name:'Map',hint:'',open:false,items:[['cities','City labels']]}
+];
+let OVL_OPEN={}, OBS_OK=true, MON_OK=true;
+try{OVL_OPEN=JSON.parse(localStorage.getItem('ovlOpen')||'{}');}catch(e){}
+function buildOverlayPanel(){
+  const wrap=document.getElementById('ovlGroups'); if(!wrap)return;
+  wrap.innerHTML='';
+  OVL_GROUPS.forEach(g=>{
+    const open=(g.id in OVL_OPEN)?OVL_OPEN[g.id]:g.open;
+    const n=g.items.filter(it=>show[it[0]]).length;
+    const head=document.createElement('div');
+    head.className='ovl-head';
+    head.innerHTML=`<span>${g.name}${n?`<span class="ovl-count">${n}</span>`:''}</span><span class="ovl-arrow">${open?'&#9662;':'&#9656;'}</span>`;
+    head.addEventListener('click',()=>{
+      OVL_OPEN[g.id]=!open;
+      try{localStorage.setItem('ovlOpen',JSON.stringify(OVL_OPEN));}catch(e){}
+      buildOverlayPanel();
+    });
+    wrap.appendChild(head);
+    if(!open)return;
+    if(g.hint){const h=document.createElement('p');h.className='ovl-hint';h.textContent=g.hint;wrap.appendChild(h);}
+    g.items.forEach(it=>{
+      const k=it[0], row=document.createElement('div');
+      row.className='toggle'+(show[k]?' on':''); row.dataset.layer=k;
+      const lbl=(k==='monitors'&&!MON_OK)?'Monitor sites (obs unavailable)':it[1];
+      row.innerHTML=`<span>${lbl}</span><div class="switch"></div>`;
+      if(((k==='fires'||k==='smoke')&&!OBS_OK)||(k==='monitors'&&!MON_OK)){
+        row.style.opacity='0.45';row.style.pointerEvents='none';
+        row.title=(k==='monitors')?'live observations could not be loaded'
+          :'current observations are shown on the latest cycle only';
+      }
+      wrap.appendChild(row);
+    });
+  });
+  bindToggles();
+}
 
 /* ---------- canvas ---------- */
 const cv=document.getElementById('aqCanvas'), cx=cv.getContext('2d');
@@ -913,10 +953,8 @@ function buildMonitors(){
     recolorMonitors();
     loadObsSeriesForDots();
   }).catch(()=>{ /* no obs endpoint (local preview / standalone embed / key unset): disable layer */
-    OBS=null; show.monitors=false;
-    const t=document.querySelector('[data-layer=monitors]');
-    if(t){t.classList.remove('on');t.style.opacity=.45;t.style.pointerEvents='none';
-      const lbl=t.querySelector('span'); if(lbl)lbl.textContent='Monitor sites (obs unavailable)';}
+    OBS=null; show.monitors=false; MON_OK=false;
+    buildOverlayPanel();
   });
 }
 function obsAQI(o){ if(!o)return -1; return (o.aqi!=null&&o.aqi>=0)?o.aqi:(isFinite(o.v)?aqiOf(species,o.v):-1); }
@@ -1312,13 +1350,20 @@ opacitySlider.addEventListener('input',()=>{opacityVal=+opacitySlider.value/100;
   opacitySlider.style.setProperty('--fill',((opacitySlider.value-20)/80*100)+'%');
   if(map.getLayer('aq'))map.setPaintProperty('aq','raster-opacity',opacityVal);});
 
-document.querySelectorAll('.toggle').forEach(t=>{t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
-  t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
-  if(k==='states'||k==='counties')setBoundaryVis();
-  if(k==='class1'||k==='tribal')toggleOverlay(k);
-  if(k==='grid')toggleGrid();
-  if(k==='fires')toggleFires();
-  if(k==='smoke')toggleSmoke();});});
+function bindToggles(){
+  document.querySelectorAll('.toggle').forEach(t=>{
+    if(t.dataset.bound)return; t.dataset.bound='1';
+    t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
+      t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
+      if(k==='states'||k==='counties')setBoundaryVis();
+      if(k==='class1'||k==='tribal')toggleOverlay(k);
+      if(k==='grid')toggleGrid();
+      if(k==='fires')toggleFires();
+      if(k==='smoke')toggleSmoke();
+      buildOverlayPanel();});
+  });
+}
+buildOverlayPanel();
 
 /* ---------- HMS smoke plumes (today's analyst-drawn OBSERVATIONS; live cycle only) ---------- */
 let SMOKE=null; // {t, data}
@@ -1365,7 +1410,7 @@ function toggleSmoke(){
   })
   .catch(()=>{
     show.smoke=false;
-    const t=document.querySelector('[data-layer=smoke]'); if(t)t.classList.remove('on');
+    buildOverlayPanel();
     banner('Smoke analysis unavailable');
   });
 }
@@ -1426,22 +1471,19 @@ function toggleFires(){
   })
   .catch(()=>{
     show.fires=false;
-    const t=document.querySelector('[data-layer=fires]'); if(t)t.classList.remove('on');
+    buildOverlayPanel();
     banner('Fire detections unavailable');
   });
 }
 /* smoke + fires are current observations — only meaningful over the LIVE cycle */
 function fireAvailability(ok){
-  const LAYERS={fires:['fires','fires-cluster'],smoke:['smoke-fill','smoke-line']};
-  Object.keys(LAYERS).forEach(k=>{
-    const t=document.querySelector(`[data-layer=${k}]`); if(!t)return;
-    if(!ok){
-      if(show[k]){show[k]=false;t.classList.remove('on');
-        LAYERS[k].forEach(id=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility','none');});}
-      t.style.opacity='0.45';t.style.pointerEvents='none';
-      t.title='current observations are shown on the latest cycle only';
-    }else{t.style.opacity='';t.style.pointerEvents='';t.title='';}
-  });
+  OBS_OK=ok;
+  if(!ok){
+    ['fires','smoke'].forEach(k=>{show[k]=false;});
+    ['fires','fires-cluster','smoke-fill','smoke-line'].forEach(id=>{
+      if(map.getLayer(id))map.setLayoutProperty(id,'visibility','none');});
+  }
+  buildOverlayPanel();
 }
 
 /* ---------- model grid overlay (warped display grid, generated client-side) ---------- */
@@ -1521,7 +1563,7 @@ function toggleOverlay(k){
     })
     .catch(()=>{
       show[k]=false;
-      const t=document.querySelector(`[data-layer=${k}]`); if(t)t.classList.remove('on');
+      buildOverlayPanel();
       banner(OVL[k].label+' overlay unavailable');
     });
 }
