@@ -608,7 +608,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,roads:false,grid:false,fires:false,smoke:false,basemap:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false,basemap:false};
 try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 
 /* ---------- inject view toggle + day selector ---------- */
@@ -636,7 +636,7 @@ const OVL_GROUPS=[
   {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
     ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)']]},
   {id:'ref',name:'Reference layers',hint:'',open:false,items:[
-    ['states','State lines'],['counties','County lines'],['roads','Major highways'],
+    ['states','State lines'],['counties','County lines'],
     ['class1','Class I areas'],['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
   {id:'map',name:'Map',hint:'',open:false,items:[['cities','City labels'],['basemap','Topographic basemap']]}
 ];
@@ -1373,7 +1373,7 @@ function bindToggles(){
     t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
       t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
       if(k==='states'||k==='counties')setBoundaryVis();
-      if(k==='class1'||k==='tribal'||k==='roads')toggleOverlay(k);
+      if(k==='class1'||k==='tribal')toggleOverlay(k);
       if(k==='grid')toggleGrid();
       if(k==='fires')toggleFires();
       if(k==='smoke')toggleSmoke();
@@ -1550,8 +1550,7 @@ function highlightCell(lng,lat){ // outline the warped cell the popup sampled
 /* ---------- reference overlays: Class I areas + tribal lands (lazy, via /api/overlay) ---------- */
 const OVL={
   tribal:{col:'#1D9E75',fillOp:0.15,dash:null,label:'Tribal lands',kind:'fill',prop:'NAME'},
-  class1:{col:'#8b6fe0',fillOp:0.12,dash:[3,2],label:'Class I areas',kind:'fill',prop:'NAME'},
-  roads:{col:'#b03a2e',dash:null,label:'Major highways',kind:'line',prop:'FULLNAME'}
+  class1:{col:'#8b6fe0',fillOp:0.12,dash:[3,2],label:'Class I areas',kind:'fill',prop:'NAME'}
 };
 let ovTip=null;
 function toggleOverlay(k){

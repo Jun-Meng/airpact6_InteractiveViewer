@@ -34,19 +34,12 @@ const SOURCES = {
     base: "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/NOAA_Satellite_Smoke_Detection_(v1)/FeatureServer/0/query",
     fields: "Density,Satellite,Start,End_", ttl: 1200,
   },
-  // Census TIGERweb primary roads. Layer 1 is the PRE-GENERALIZED 2.5M-650k
-  // scale version — layer 2 (full detail) is tens of MB domain-wide and kills
-  // the Worker parsing it (same lesson as the >24 h AirNow queries).
-  roads: {
-    base: "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer/1/query",
-    fields: "FULLNAME", ttl: 7 * 86400, params: { maxAllowableOffset: "0.005" },
-  },
 };
 
 export async function onRequestGet(context) {
   const name = new URL(context.request.url).searchParams.get("name");
   const src = SOURCES[name];
-  if (!src) return json({ error: "name must be tribal, class1, smoke, or roads" }, 400);
+  if (!src) return json({ error: "name must be tribal, class1, or smoke" }, 400);
 
   const cache = caches.default;
   const cacheKey = new Request(new URL(`/api/overlay?name=${name}`, context.request.url));
@@ -57,7 +50,7 @@ export async function onRequestGet(context) {
   const r = await fetch(url);
   if (!r.ok) return json({ error: `upstream HTTP ${r.status}` }, 502);
 
-  // STREAM the body through — never JSON.parse here: multi-MB payloads (roads)
+  // STREAM the body through — never JSON.parse here: multi-MB payloads
   // exceed the Worker CPU budget. Validate by peeking at the first bytes only
   // (ArcGIS errors are 200s starting {"error":...; real data starts with
   // {"type":"FeatureCollection").
