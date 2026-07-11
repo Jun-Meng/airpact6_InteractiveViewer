@@ -56,12 +56,21 @@ export async function onRequestGet(context) {
   const url = src.base + "?" + new URLSearchParams({ ...COMMON, outFields: src.fields, ...(src.params || {}) });
   const r = await fetch(url);
   if (!r.ok) return json({ error: `upstream HTTP ${r.status}` }, 502);
-  const gj = await r.json();
-  // ArcGIS reports errors as 200-with-error-JSON; only cache real collections
-  if (!gj || gj.type !== "FeatureCollection" || !Array.isArray(gj.features))
+
+  // STREAM the body through — never JSON.parse here: multi-MB payloads (roads)
+  // exceed the Worker CPU budget. Validate by peeking at the first bytes only
+  // (ArcGIS errors are 200s starting {"error":...; real data starts with
+  // {"type":"FeatureCollection").
+  const [peek, body] = r.body.tee();
+  const reader = peek.getReader();
+  const first = await reader.read();
+  reader.cancel();
+  const head = new TextDecoder().decode(
+    first.value ? first.value.slice(0, 300) : new Uint8Array());
+  if (!head.includes('"FeatureCollection"'))
     return json({ error: "unexpected upstream payload" }, 502);
 
-  const resp = new Response(JSON.stringify(gj), {
+  const resp = new Response(body, {
     status: 200,
     headers: { "Content-Type": "application/json",
                "Cache-Control": `public, max-age=${src.ttl}` },
