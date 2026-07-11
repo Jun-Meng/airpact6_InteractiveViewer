@@ -241,17 +241,28 @@
     position: absolute; top: 12px; left: 12px; z-index: 2;
     background: rgba(14,19,24,.82); backdrop-filter: blur(6px);
     border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px;
-    font-family: var(--mono); font-size: 11px; color: var(--ink); pointer-events: none;
+    font-family: var(--mono); font-size: 11px; color: var(--ink);
   }
   .map-tag b { color: var(--accent); font-size: 12px; }
+  .map-tag { width: 302px; }
   .tag-time { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
+  .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
+  .tag-transport .play svg { width: 13px; height: 13px; }
+  .tag-transport input[type=range] { flex: 1; }
+  #speedChip {
+    flex: 0 0 auto; font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 7px; cursor: pointer; user-select: none;
+  }
+  #speedChip:hover { color: var(--ink); }
+  .map-tag .ticks { margin-top: 3px; }
   #mtTime { font-size: 15px; font-weight: 700; color: var(--ink); }
   #mtDate { font-size: 11px; color: var(--ink-mute); }
   #mtHr { font-size: 11px; font-weight: 700; color: var(--accent); }
   .map-tag .domain { color: var(--ink-faint); font-size: 9.5px; margin-left: 7px; letter-spacing:.05em; }
 
   .hint {
-    position:absolute; top: 82px; left: 12px; z-index: 2;
+    position:absolute; top: 148px; left: 12px; z-index: 2;
     background: rgba(14,19,24,.78); backdrop-filter: blur(6px); border: 1px solid var(--line);
     border-radius: 20px; padding: 6px 14px; font-size: 11px; color: var(--ink-mute);
     transition: opacity .4s; pointer-events: none; max-width: calc(100% - 24px);
@@ -296,34 +307,6 @@
     </div>
 
     <div class="section">
-      <p class="label">Valid time</p>
-      <div class="clock">
-        <div>
-          <div class="valid" id="validTime">—</div>
-          <div class="vdate" id="validDate">—</div>
-        </div>
-        <div class="hr">
-          <b id="hrNum">+00</b>
-          <span>FCST HR</span>
-        </div>
-      </div>
-      <div class="scrub-wrap">
-        <input type="range" id="scrub" min="0" max="71" value="0" step="1" />
-        <div class="ticks"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>72h</span></div>
-      </div>
-      <div class="transport">
-        <button class="play" id="play" aria-label="Play forecast">
-          <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <div class="speed" id="speed">
-          <button data-ms="600">0.5×</button>
-          <button data-ms="320" class="on">1×</button>
-          <button data-ms="150">2×</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
       <div class="row">
         <p class="label" style="margin:0">Layer opacity</p>
         <span class="val" id="opVal">80%</span>
@@ -355,6 +338,14 @@
     <div class="map-tag">
       <div><b id="tagSp">PM2.5</b> <span id="tagKind">surface forecast</span><span class="domain">PNW 4 km</span></div>
       <div class="tag-time"><span id="mtTime">—</span><span id="mtDate"></span><span id="mtHr"></span></div>
+      <div class="tag-transport">
+        <button class="play" id="play" aria-label="Play forecast">
+          <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <input type="range" id="scrub" min="0" max="71" value="0" step="1" />
+        <span id="speedChip" title="animation speed">1&times;</span>
+      </div>
+      <div class="ticks"><span>Day 1</span><span>Day 2</span><span>Day 3</span><span>72h</span></div>
     </div>
     <div class="map-legend" id="mapLegend">
       <div class="ml-head"><span id="legendTitle">AQI — PM2.5 (µg/m³)</span><span id="legendCollapse" title="hide legend">&#9662;</span></div>
@@ -630,7 +621,6 @@ try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
-const secTime=document.getElementById('scrub').closest('.section');
 secPollutant.insertAdjacentHTML('beforebegin',
   `<div class="section"><p class="label">View</p>
    <div class="seg" id="viewSeg"><button data-v="hourly" class="on">Hourly</button><button data-v="daily">Daily</button></div></div>
@@ -642,10 +632,6 @@ secPollutant.insertAdjacentHTML('beforebegin',
        style="flex:0 0 32px;font-size:15px;color:var(--ink-mute);background:transparent;border:1px solid var(--line);border-radius:7px;cursor:pointer">&#9678;</button>
    </div>
    <div id="geores"></div></div>`);
-secTime.insertAdjacentHTML('beforeend',
-  `<div id="daySel" style="display:none">
-   <p style="font-family:var(--mono);font-size:10px;color:var(--ink-faint);margin:9px 0 0;line-height:1.5">
-   Overall AQI = worse of 24-hr PM2.5 and 8-hr-max ozone.</p></div>`);
 document.getElementById('seg').insertAdjacentHTML('afterend',
   `<div class="seg" id="colorSeg" style="margin-top:8px"><button data-c="aqi">AQI</button><button data-c="conc" class="on">Concentration</button></div>`);
 /* collapsible overlay groups (order + grouping teach the obs-vs-forecast split) */
@@ -1287,7 +1273,8 @@ function buildLegend(){
   }
   let ranges, title;
   if(view==='daily'){ ranges=['0–50','51–100','101–150','151–200','201–300','301+'];
-    title=dailyPol==='all'?'Daily AQI (worse of PM2.5 / O₃)':`Daily AQI — ${dailyPol==='pm'?'PM2.5':'Ozone'}`; }
+    title=dailyPol==='all'?'Daily AQI (worse of PM2.5 / O₃)':`Daily AQI — ${dailyPol==='pm'?'PM2.5':'Ozone'}`;
+    if(dailyPol==='all')wrap.innerHTML='<p style="font-family:var(--mono);font-size:9px;color:var(--ink-faint);margin:0 0 4px">Overall = worse of 24-hr PM2.5 and 8-hr-max ozone</p>'; }
   else if(species==='pm'){ ranges=['0–9','9–35','35–55','55–125','125–225','225+']; title='AQI — PM2.5 (µg/m³)'; }
   else { ranges=['0–54','55–70','71–85','86–105','106–200','200+']; title='AQI — Ozone (ppb)'; }
   CATS.forEach((c,i)=>{const d=document.createElement('div');d.className='legend-item';
@@ -1324,9 +1311,6 @@ function updateReadingDaily(r){
 function updateClock(){
   if(view==='hourly'){
     const t=DATA.timeInfo(hour);
-    document.getElementById('validTime').textContent=t.time+' '+(t.tz||'');
-    document.getElementById('validDate').textContent=t.date;
-    document.getElementById('hrNum').textContent='+'+String(hour).padStart(2,'0');
     document.getElementById('tagSp').textContent=species==='pm'?'PM2.5':'Ozone';
     document.getElementById('tagKind').textContent='surface forecast';
     document.getElementById('mtTime').textContent=`${t.time} ${t.tz||''}`;
@@ -1334,9 +1318,6 @@ function updateClock(){
     document.getElementById('mtHr').textContent='FCST HR +'+String(hour).padStart(2,'0');
   } else if(DATA.daily){
     const d=DATA.daily.days[dayIdx];
-    document.getElementById('validTime').textContent=d.label.split(' ')[0];
-    document.getElementById('validDate').textContent=d.label.split(' ').slice(1).join(' ');
-    document.getElementById('hrNum').textContent='D'+(dayIdx+1);
     document.getElementById('tagSp').textContent=
       dailyPol==='all'?'Overall AQI':(dailyPol==='pm'?'PM2.5':'Ozone');
     document.getElementById('tagKind').textContent=
@@ -1354,9 +1335,6 @@ function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); u
 function setView(v){
   view=v; if(playing)setPlay(false);
   document.querySelectorAll('#viewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  const daily=v==='daily';
-  document.getElementById('daySel').style.display=daily?'block':'none';
-  secTime.querySelector('.label').textContent=daily?'Forecast day':'Valid time';
   syncPollutantUI();
   configScrub();
   refresh();
@@ -1381,7 +1359,7 @@ function syncPollutantUI(){
 
 /* ---------- controls ---------- */
 const scrub=document.getElementById('scrub');
-const ticksEl=document.querySelector('.scrub-wrap .ticks');
+const ticksEl=document.querySelector('.map-tag .ticks');
 const TICKS_HOURLY=ticksEl.innerHTML;
 function setScrubFill(){ scrub.style.setProperty('--fill',(+scrub.value/(+scrub.max||1)*100)+'%'); }
 /* one slider, two modes: 72 hourly steps, or 3 daily steps in Daily AQI view */
@@ -1656,8 +1634,13 @@ function setPlay(on){playing=on;
   },view==='daily'?Math.max(stepMs*4,900):stepMs);
   else clearInterval(timer);}
 playBtn.addEventListener('click',()=>setPlay(!playing));
-document.getElementById('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;stepMs=+b.dataset.ms;
-  document.querySelectorAll('#speed button').forEach(x=>x.classList.toggle('on',x===b));if(playing){setPlay(false);setPlay(true);}});
+const SPEEDS=[[600,'0.5×'],[320,'1×'],[150,'2×']];
+let speedIdx=1;
+document.getElementById('speedChip').addEventListener('click',()=>{
+  speedIdx=(speedIdx+1)%SPEEDS.length;
+  stepMs=SPEEDS[speedIdx][0];
+  document.getElementById('speedChip').textContent=SPEEDS[speedIdx][1];
+  if(playing){setPlay(false);setPlay(true);}});
 
 function hideHint(){
   const h=document.getElementById('hint');
