@@ -34,19 +34,25 @@ const SOURCES = {
     base: "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/NOAA_Satellite_Smoke_Detection_(v1)/FeatureServer/0/query",
     fields: "Density,Satellite,Start,End_", ttl: 1200,
   },
+  // Census TIGERweb primary roads (interstates + US highways); lines need a
+  // gentler simplification than area boundaries or they get visibly wobbly.
+  roads: {
+    base: "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer/2/query",
+    fields: "FULLNAME", ttl: 7 * 86400, params: { maxAllowableOffset: "0.005" },
+  },
 };
 
 export async function onRequestGet(context) {
   const name = new URL(context.request.url).searchParams.get("name");
   const src = SOURCES[name];
-  if (!src) return json({ error: "name must be tribal, class1, or smoke" }, 400);
+  if (!src) return json({ error: "name must be tribal, class1, smoke, or roads" }, 400);
 
   const cache = caches.default;
   const cacheKey = new Request(new URL(`/api/overlay?name=${name}`, context.request.url));
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
-  const url = src.base + "?" + new URLSearchParams({ ...COMMON, outFields: src.fields });
+  const url = src.base + "?" + new URLSearchParams({ ...COMMON, outFields: src.fields, ...(src.params || {}) });
   const r = await fetch(url);
   if (!r.ok) return json({ error: `upstream HTTP ${r.status}` }, 502);
   const gj = await r.json();

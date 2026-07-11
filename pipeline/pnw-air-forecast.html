@@ -608,7 +608,8 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,roads:false,grid:false,fires:false,smoke:false,basemap:false};
+try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 
 /* ---------- inject view toggle + day selector ---------- */
 const secPollutant=document.getElementById('seg').closest('.section');
@@ -635,9 +636,9 @@ const OVL_GROUPS=[
   {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
     ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)']]},
   {id:'ref',name:'Reference layers',hint:'',open:false,items:[
-    ['states','State lines'],['counties','County lines'],['class1','Class I areas'],
-    ['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
-  {id:'map',name:'Map',hint:'',open:false,items:[['cities','City labels']]}
+    ['states','State lines'],['counties','County lines'],['roads','Major highways'],
+    ['class1','Class I areas'],['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
+  {id:'map',name:'Map',hint:'',open:false,items:[['cities','City labels'],['basemap','Topographic basemap']]}
 ];
 let OVL_OPEN={}, OBS_OK=true, MON_OK=true;
 try{OVL_OPEN=JSON.parse(localStorage.getItem('ovlOpen')||'{}');}catch(e){}
@@ -715,13 +716,29 @@ function setBoundaryVis(){
 }
 
 /* ---------- map ---------- */
+const BASEMAPS={
+  light:{tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
+    attr:'© OpenStreetMap contributors © CARTO'},
+  topo:{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],
+    attr:'Esri, USGS — Esri, TomTom, Garmin, FAO, NOAA'}
+};
 const map=new maplibregl.Map({
   container:'map',
   style:{version:8,sources:{base:{type:'raster',
-      tiles:['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png','https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
-      tileSize:256, attribution:'© OpenStreetMap contributors © CARTO'}},
+      tiles:(show.basemap?BASEMAPS.topo:BASEMAPS.light).tiles,
+      tileSize:256, attribution:(show.basemap?BASEMAPS.topo:BASEMAPS.light).attr}},
     layers:[{id:'base',type:'raster',source:'base'}]},
   center:[-118,45.5], zoom:4.6, minZoom:3.5, maxZoom:11.5, attributionControl:{compact:true}});
+function setBasemap(topo){
+  const cfg=topo?BASEMAPS.topo:BASEMAPS.light;
+  const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
+  const beforeId=(i>=0&&layers[i+1])?layers[i+1].id:undefined;
+  if(map.getLayer('base'))map.removeLayer('base');
+  if(map.getSource('base'))map.removeSource('base');
+  map.addSource('base',{type:'raster',tiles:cfg.tiles,tileSize:256,attribution:cfg.attr});
+  map.addLayer({id:'base',type:'raster',source:'base'},beforeId);
+  try{localStorage.setItem('basemap',topo?'topo':'light');}catch(e){}
+}
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
 map.addControl(new maplibregl.ScaleControl({maxWidth:90,unit:'metric'}),'bottom-left');
 
@@ -1356,10 +1373,11 @@ function bindToggles(){
     t.addEventListener('click',()=>{const k=t.dataset.layer;show[k]=!show[k];
       t.classList.toggle('on',show[k]); if(k==='monitors')recolorMonitors(); if(k==='cities')toggleCities();
       if(k==='states'||k==='counties')setBoundaryVis();
-      if(k==='class1'||k==='tribal')toggleOverlay(k);
+      if(k==='class1'||k==='tribal'||k==='roads')toggleOverlay(k);
       if(k==='grid')toggleGrid();
       if(k==='fires')toggleFires();
       if(k==='smoke')toggleSmoke();
+      if(k==='basemap')setBasemap(show.basemap);
       buildOverlayPanel();});
   });
 }
@@ -1531,13 +1549,14 @@ function highlightCell(lng,lat){ // outline the warped cell the popup sampled
 
 /* ---------- reference overlays: Class I areas + tribal lands (lazy, via /api/overlay) ---------- */
 const OVL={
-  tribal:{col:'#1D9E75',fillOp:0.15,dash:null,label:'Tribal lands'},
-  class1:{col:'#8b6fe0',fillOp:0.12,dash:[3,2],label:'Class I areas'}
+  tribal:{col:'#1D9E75',fillOp:0.15,dash:null,label:'Tribal lands',kind:'fill',prop:'NAME'},
+  class1:{col:'#8b6fe0',fillOp:0.12,dash:[3,2],label:'Class I areas',kind:'fill',prop:'NAME'},
+  roads:{col:'#b03a2e',dash:null,label:'Major highways',kind:'line',prop:'FULLNAME'}
 };
 let ovTip=null;
 function toggleOverlay(k){
-  if(map.getLayer(k+'-fill')){
-    ['-fill','-line'].forEach(s=>map.setLayoutProperty(k+s,'visibility',show[k]?'visible':'none'));
+  if(map.getLayer(k+'-line')){
+    [k+'-fill',k+'-line'].forEach(id=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',show[k]?'visible':'none');});
     hideOvTip();
     return;
   }
@@ -1549,17 +1568,19 @@ function toggleOverlay(k){
       if(map.getSource(k))return;
       map.addSource(k,{type:'geojson',data:gj});
       const o=OVL[k];
-      map.addLayer({id:k+'-fill',type:'fill',source:k,
-        paint:{'fill-color':o.col,'fill-opacity':o.fillOp}});
+      if(o.kind==='fill')
+        map.addLayer({id:k+'-fill',type:'fill',source:k,
+          paint:{'fill-color':o.col,'fill-opacity':o.fillOp}});
       map.addLayer({id:k+'-line',type:'line',source:k,
-        paint:Object.assign({'line-color':o.col,'line-width':1.4},
+        paint:Object.assign({'line-color':o.col,'line-width':o.kind==='line'?1.8:1.4,'line-opacity':0.85},
           o.dash?{'line-dasharray':o.dash}:{})});
-      map.on('mousemove',k+'-fill',e=>{
+      const hoverId=o.kind==='fill'?k+'-fill':k+'-line';
+      map.on('mousemove',hoverId,e=>{
         const f=e.features&&e.features[0]; if(!f||!show[k])return;
         const p=f.properties||{};
-        showOvTip(e.point,(p.NAME||'')+(k==='class1'&&p.STATE?` (${p.STATE})`:''));
+        showOvTip(e.point,(p[o.prop]||'')+(k==='class1'&&p.STATE?` (${p.STATE})`:''));
       });
-      map.on('mouseleave',k+'-fill',hideOvTip);
+      map.on('mouseleave',hoverId,hideOvTip);
     })
     .catch(()=>{
       show[k]=false;
