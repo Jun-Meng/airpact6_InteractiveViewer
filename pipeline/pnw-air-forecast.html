@@ -269,6 +269,27 @@
   .map-tag-mini .play { width: 18px; height: 18px; flex: 0 0 18px; }
   .map-tag-mini .play svg { width: 9px; height: 9px; }
   #miniHr { color: var(--accent); font-weight: 700; }
+  .spark-pin { font-size: 10px; color: var(--accent); cursor: pointer; white-space: nowrap; }
+  .spark-pin:hover { text-decoration: underline; }
+  .pin-card {
+    position: absolute; z-index: 6; width: 336px; max-width: calc(100% - 16px);
+    background: rgba(14,19,24,.93); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono);
+  }
+  .pin-hd {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 6px 10px; cursor: grab; border-bottom: 1px solid var(--line);
+    font-size: 10px; color: var(--ink); user-select: none;
+  }
+  .pin-hd:active { cursor: grabbing; }
+  .pin-dot { display:inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .pin-x { cursor: pointer; color: var(--ink-mute); font-size: 13px; padding: 0 3px; }
+  .pin-x:hover { color: var(--ink); }
+  .pin-bd { padding: 8px 11px; }
+  .pin-mark {
+    width: 12px; height: 12px; border-radius: 50%; border: 2px solid #0b0f12;
+    box-shadow: 0 0 0 2px rgba(255,255,255,.7);
+  }
   .tag-transport { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .tag-transport .play { width: 26px; height: 26px; flex: 0 0 26px; }
   .tag-transport .play svg { width: 13px; height: 13px; }
@@ -637,6 +658,7 @@ async function switchCycle(cyc){
     cv.width=DATA.W; cv.height=DATA.H;
     scrub.max=DATA.nHours-1; scrub.value=0;
     if(monMarkers.length)loadObsSeriesForDots(); // re-key obs to the new cycle's window
+    closeAllPins(); // pinned cards show the previous cycle's data — close for correctness
     fireAvailability(cyc===LATEST_CYCLE);
     configScrub(); refresh();
     const badge=document.querySelector('.demo-badge');
@@ -825,7 +847,11 @@ map.on('load', async ()=>{
 });
 
 /* ---------- 72-h sparkline (click-to-query popups) ---------- */
-let SPARK_SEQ=0, sparkSync=null, OBS_SERIES=null;
+let SPARK_SEQ=0, OBS_SERIES=null;
+const SPARK_SYNCS=new Set();   // all live sparkline cursors (popups + pinned cards)
+const PIN_CARDS=new Set();     // close-functions of pinned comparison cards
+const PIN_COLORS=['#26c6da','#f0997b','#ed93b1','#97c459','#85b7eb','#fac775'];
+let PIN_SEQ=0;
 function fetchObsSeries(){ // hourly obs for the viewed cycle's window, cached per cycle
   // AirNow can't serve the whole 72-h domain query in one call (the Function
   // dies on the payload), so fetch <=24-h day chunks and stitch them here.
@@ -860,7 +886,7 @@ function fetchObsSeries(){ // hourly obs for the viewed cycle's window, cached p
   OBS_SERIES={key,promise};
   return promise;
 }
-function buildSpark(lng,lat,obs,siteId){
+function buildSpark(lng,lat,obs,siteId,title,noPin){
   const n=DATA.nHours, vals=[];
   for(let h=0;h<n;h++){const c=DATA.valueAt(species,h,lng,lat);vals.push(isFinite(c)?c:NaN);}
   if(!vals.some(isFinite))return null;
@@ -901,10 +927,11 @@ function buildSpark(lng,lat,obs,siteId){
        <circle id="spd_${K}" r="3.2" fill="#2f6fd0"/>
        <circle id="spd2_${K}" r="3" fill="#5b9bec" style="display:none"/>
      </svg>
-     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:8px">
        <span class="pop-cat" id="spc_${K}"></span>
        ${siteId!=null?'<span style="font-size:10px;color:var(--ink-mute)"><span style="color:var(--ink)">&#8212;</span> AIRPACT6 &nbsp;<span style="color:#5b9bec">&#8212;</span> AirNow obs</span>'
          :(obsPt?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':'')}
+       ${noPin?'':`<span class="spark-pin" id="pin_${K}" title="pin as a draggable card for side-by-side comparison">&#8853; pin</span>`}
      </div>`;
   const wire=(popup)=>{
     const $=id=>document.getElementById(id+'_'+K);
@@ -950,11 +977,50 @@ function buildSpark(lng,lat,obs,siteId){
       show(lastH);
     }).catch(()=>{});
     show(h0);
-    sparkSync=show;
-    if(popup)popup.on('close',()=>{if(sparkSync===show)sparkSync=null;});
+    SPARK_SYNCS.add(show);
+    if(popup)popup.on('close',()=>SPARK_SYNCS.delete(show));
+    const pinBtn=$('pin');
+    if(pinBtn)pinBtn.addEventListener('click',()=>{
+      createPinCard(lng,lat,obs,siteId,title||`${lat.toFixed(2)}, ${lng.toFixed(2)}`);
+      if(popup)popup.remove();
+    });
+    return show;
   };
   return {html,wire};
 }
+
+/* ---------- pinned comparison cards (draggable, screen-anchored) ---------- */
+function createPinCard(lng,lat,obs,siteId,title){
+  const col=PIN_COLORS[PIN_SEQ++%PIN_COLORS.length];
+  const dot=document.createElement('div'); dot.className='pin-mark'; dot.style.background=col;
+  const marker=new maplibregl.Marker({element:dot}).setLngLat([lng,lat]).addTo(map);
+  const wrap=document.getElementById('map-wrap');
+  const card=document.createElement('div'); card.className='pin-card'; card.style.borderColor=col;
+  const sp=buildSpark(lng,lat,obs,siteId,title,true);
+  card.innerHTML=`<div class="pin-hd"><span><span class="pin-dot" style="background:${col}"></span>${esc(title)}</span><span class="pin-x" title="close">&times;</span></div>
+    <div class="pin-bd">${sp.html}</div>`;
+  wrap.appendChild(card);
+  const p=map.project([lng,lat]);
+  card.style.left=Math.max(8,Math.min(p.x+16,wrap.clientWidth-340))+'px';
+  card.style.top=Math.max(8,Math.min(p.y-60,wrap.clientHeight-280))+'px';
+  const show=sp.wire(null);
+  const hd=card.querySelector('.pin-hd'); let drag=null;
+  hd.addEventListener('mousedown',e=>{
+    if(e.target.classList.contains('pin-x'))return;
+    drag={dx:e.clientX-card.offsetLeft,dy:e.clientY-card.offsetTop};
+    card.style.zIndex=7; e.preventDefault();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    card.style.left=Math.max(0,Math.min(e.clientX-drag.dx,wrap.clientWidth-card.offsetWidth))+'px';
+    card.style.top=Math.max(0,Math.min(e.clientY-drag.dy,wrap.clientHeight-44))+'px';
+  });
+  window.addEventListener('mouseup',()=>{drag=null;});
+  const closeCard=()=>{SPARK_SYNCS.delete(show);marker.remove();card.remove();PIN_CARDS.delete(closeCard);};
+  card.querySelector('.pin-x').addEventListener('click',closeCard);
+  PIN_CARDS.add(closeCard);
+}
+function closeAllPins(){[...PIN_CARDS].forEach(f=>f());}
 function dailyBarsHTML(lng,lat){
   if(!DATA.daily)return '';
   const days=DATA.daily.days, W=340,HH=96,BW=84;
@@ -976,7 +1042,7 @@ function queryPoint(lng,lat){
   if(view==='hourly'){
     const c=DATA.valueAt(species,hour,lng,lat); if(!isFinite(c))return;
     const aqi=aqiOf(species,c),ci=catIndex(aqi),cat=CATS[ci],unit=DATA.units(species),spn=species==='pm'?'PM2.5':'Ozone';
-    const sp=buildSpark(lng,lat,null);
+    const sp=buildSpark(lng,lat,null,undefined,`${lat.toFixed(2)}, ${lng.toFixed(2)}`);
     const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([lng,lat]).setHTML(
       `<p class="pop-t">${spn} · 72-h forecast</p>${sp?sp.html:
        `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
@@ -1198,7 +1264,7 @@ function siteClick(s){
   }else{
     detail=`<p class="pop-t" style="margin:2px 0 0">this site does not report ${species==='pm'?'PM2.5':'ozone'} — model forecast only</p>`;
   }
-  const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`):null;
+  const sp=view==='hourly'?buildSpark(s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`,s.name):null;
   const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
     `<p class="pop-t">${esc(s.name)}</p>${detail}<div id="${VB}" style="display:none"></div>`+
@@ -1367,7 +1433,7 @@ function updateClock(){
 }
 
 function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash();
-  if(sparkSync&&view==='hourly')sparkSync(hour); }
+  if(view==='hourly')SPARK_SYNCS.forEach(f=>f(hour)); }
 
 /* ---------- view switching ---------- */
 function setView(v){
