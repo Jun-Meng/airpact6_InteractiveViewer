@@ -174,6 +174,23 @@
   .toggle.on .switch::after { transform: translateX(16px); background: var(--ink); }
 
   /* legend */
+  .map-legend {
+    position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3;
+    background: rgba(14,19,24,.85); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+    width: 320px; max-width: calc(100% - 24px);
+  }
+  .ml-head { display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 9.5px; color: var(--ink-mute); margin-bottom: 4px; }
+  #legendCollapse { cursor: pointer; color: var(--ink-faint); padding: 0 2px; }
+  #legendCollapse:hover { color: var(--ink); }
+  .map-legend-chip {
+    position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 3;
+    background: rgba(14,19,24,.85); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 12px; font-family: var(--mono); font-size: 10px; color: var(--ink-mute); cursor: pointer;
+  }
+  .ml-grad { display:inline-block; width: 44px; height: 8px; border-radius: 2px; vertical-align: -1px; margin-right: 6px;
+    background: linear-gradient(90deg,#00e400,#ffd31a,#ff7e00,#ff2d2d,#7e0023); }
   .legend-item { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
   .legend-item .sw { width: 16px; height: 16px; border-radius: 4px; flex: 0 0 16px; }
   .legend-item .nm { font-size: 12px; flex: 1; }
@@ -325,11 +342,6 @@
     </div>
 
     <div class="section">
-      <p class="label" id="legendTitle">AQI — PM2.5 (µg/m³)</p>
-      <div id="legend"></div>
-    </div>
-
-    <div class="section">
       <p class="label">Reading</p>
       <div class="reading" id="reading">
         <p class="empty">Tap anywhere on the map to read the forecast concentration and air-quality category at that point and hour.</p>
@@ -346,6 +358,13 @@
     <div id="map"></div>
     <div class="map-tag"><b id="tagSp">PM2.5</b> surface forecast<span class="domain">PNW 4 km · click to query</span></div>
     <div class="map-clock" id="mapClock"></div>
+    <div class="map-legend" id="mapLegend">
+      <div class="ml-head"><span id="legendTitle">AQI — PM2.5 (µg/m³)</span><span id="legendCollapse" title="hide legend">&#9662;</span></div>
+      <div id="legend"></div>
+    </div>
+    <div class="map-legend-chip" id="legendChip" style="display:none" title="show legend">
+      <span class="ml-grad"></span><span id="chipLabel">legend</span> &#9652;
+    </div>
     <div class="hint" id="hint">Click the map to read a value · drag the slider to step through 72 hours</div>
     <canvas id="aqCanvas" width="288" height="256"></canvas>
   </div>
@@ -1615,6 +1634,16 @@ document.getElementById('speed').addEventListener('click',e=>{const b=e.target.c
   document.querySelectorAll('#speed button').forEach(x=>x.classList.toggle('on',x===b));if(playing){setPlay(false);setPlay(true);}});
 
 function hideHint(){const h=document.getElementById('hint');if(h)h.style.opacity='0';}
+
+/* ---------- floating legend collapse ---------- */
+function setLegendOpen(open){
+  document.getElementById('mapLegend').style.display=open?'':'none';
+  document.getElementById('legendChip').style.display=open?'none':'';
+  try{localStorage.setItem('legendOpen',open?'1':'0');}catch(e){}
+}
+document.getElementById('legendCollapse').addEventListener('click',()=>setLegendOpen(false));
+document.getElementById('legendChip').addEventListener('click',()=>setLegendOpen(true));
+try{if(localStorage.getItem('legendOpen')==='0')setLegendOpen(false);}catch(e){}
 
 /* ---------- permalinks: URL hash <-> state ---------- */
 let HASH_READY=false, HASH_CYCLE=null, hashT=null;
