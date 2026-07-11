@@ -39,7 +39,8 @@ GitHub push does NOT deploy — deploy is always wrangler from Kamiak.
 
 ## Status (as of end of 2026-07-10)
 Worklogs: `memory/worklog/2026-07-07.md`, `2026-07-08.md` (detail; later sections span → 07-10), `2026-07-10.md` (consolidated summary + engineering rules — READ THIS ONE FIRST).
-- Everything shipped + confirmed except final batch (highways removal / topo basemap / overlay panel / smoke — verify deployed next session). Full feature list in 2026-07-10.md.
+- ALL shipped + confirmed through commit 5f93c4e (incl. late-07-10 UI consolidation). Full detail in 2026-07-10.md.
 - Viewer now has: obs layer w/ dynamic dots + obs curves, sparkline popups, archive, verification (3 metrics incl. MDA8 + exceedances) + per-site badges, HMS smoke + clustered VIIRS fires, Class I/tribal/grid overlays, collapsible overlay panel, topo basemap, permalinks, find-a-place, Pacific-time UI, failure emails.
+- UI layout (post-consolidation): map chip top-left = WHEN (view toggle/time/playback/readout); floating legend bottom-center = layer meaning + opacity; hover = instant values, click = 72-h popup; sidebar (4 sections) = Find a place, Forecast cycle, Pollutant (kept for discoverability — don't merge into chip without re-reading 07-10 notes), Overlays.
 - Queue: Phase 2 GOES-R FDC FRP (Kamiak job, task #25); monthly statistics (~Aug 1).
 - Engineering rules that bit us (details in 2026-07-10.md): AirNow ≤24 h queries; never JSON.parse big bodies in Workers (stream+peek); CF cache survives deploys; test with EXACT prod params; popups are dark-themed.
