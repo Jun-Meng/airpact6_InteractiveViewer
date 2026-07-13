@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>About — Northwest Air Quality Forecast</title>
+<meta name="description" content="What the Northwest Air Quality Forecast is, how AIRPACT-6 works, where the data comes from, and how to cite it."/>
+<style>
+:root{--bg:#f6f7f8;--card:#fff;--ink:#1d2630;--ink-mute:#5f6b76;--ink-faint:#8a949c;
+  --line:#e3e6e9;--blue:#2f6fd0;--mono:ui-monospace,'SF Mono',Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:26px 18px 60px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:16px;margin:28px 0 8px}
+p{margin:0 0 12px}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.sub{font-size:13px;color:var(--ink-mute);margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+.mono{font-family:var(--mono);font-size:13px}
+.note{font-size:13px;color:var(--ink-mute)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>About this forecast</h1>
+<p class="sub"><a href="index.html">&larr; back to the map</a> · <a href="verify.html">verification</a></p>
+
+<p>The Northwest Air Quality Forecast is an interactive viewer for
+<b>AIRPACT-6</b>, a numerical air quality forecasting system for the Pacific
+Northwest. Every day, the system runs the CMAQ chemical-transport model on a
+4&nbsp;km grid covering Washington, Oregon, Idaho, and neighboring areas, and
+produces a 72-hour forecast of surface fine-particle (PM2.5) and ozone
+concentrations. This site turns each morning's run into the animated map,
+time-series popups, and verification statistics you see here.</p>
+
+<h2>What the products mean</h2>
+<p><b>Hourly PM2.5</b> (µg/m³) and <b>hourly ozone</b> (ppb) are modeled
+surface concentrations, one map per forecast hour. <b>Daily</b> products
+follow the regulatory definitions: PM2.5 as the 24-hour mean and ozone as the
+MDA8 (the day's maximum 8-hour running mean). <b>Overall daily AQI</b> is the
+worse of the two, using U.S. EPA Air Quality Index breakpoints. AQI is
+computed in your browser from the concentrations, so coloring stays exact.</p>
+
+<h2>Observations shown alongside the model</h2>
+<p>Monitor dots, observed curves in popups, and all verification statistics
+use real-time and recent observations from the U.S. EPA/partner
+<a href="https://www.airnow.gov/">AirNow</a> network. Smoke plumes are the
+analyst-drawn <a href="https://www.ospo.noaa.gov/products/land/hms.html">NOAA
+Hazard Mapping System</a> analysis (GOES satellite imagery, updated through
+the day). Fire detections are 375&nbsp;m VIIRS hotspots from
+<a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, shown within
+about a minute of satellite overpass. Observations are labeled as such
+throughout the site — they are measurements, not forecast.</p>
+
+<h2>How good is the forecast?</h2>
+<p>We verify it in the open. Every night the previous day's AirNow
+observations are paired with the archived forecasts that covered that day, and
+the <a href="verify.html">verification page</a> reports bias, RMSE,
+correlation, and ozone-exceedance skill by site, region, and forecast lead
+time. Clicking any monitor on the map shows that site's recent skill.</p>
+<p class="note">Honest caveats: a 4&nbsp;km model cannot resolve
+neighborhood-scale variations; wildfire smoke is the hardest case, since
+forecast skill depends on the fire-emission estimates fed into the model
+(improving these is active work); and terrain effects like valley inversions
+challenge any regional model. Use the verification numbers, not our
+enthusiasm, to judge trustworthiness.</p>
+
+<h2>People and support</h2>
+<div class="card">
+<p>The operational AIRPACT-6 CMAQ pipeline is run by graduate student
+<b>Priom Zarrah</b>. The visualization pipeline, this site, and the
+verification system are built and maintained by <b>Prof. Jun Meng</b>, with
+pipeline development support from <b>Jahidul Islam</b>. The visualization
+layer was developed in collaboration with Claude (Anthropic).</p>
+<p style="margin:0">This work is made possible by financial support from the
+<b>NW-AIRQUEST</b> consortium. AIRPACT has been developed over many years by
+the Laboratory for Atmospheric Research at Washington State University.</p>
+</div>
+
+<h2>Citing this site</h2>
+<p class="mono">Northwest Air Quality Forecast (AIRPACT-6 visualization),
+Washington State University, https://nw-air-forecast.pages.dev/ (accessed
+YYYY-MM-DD).</p>
+
+<h2>Feedback and code</h2>
+<p>Found a bug, want a feature, or have a question? Open an issue on
+<a href="https://github.com/Jun-Meng/airpact6_InteractiveViewer/issues">GitHub</a>.
+The visualization pipeline is open source at
+<a href="https://github.com/Jun-Meng/airpact6_InteractiveViewer">github.com/Jun-Meng/airpact6_InteractiveViewer</a>.</p>
+
+<p class="note" style="margin-top:26px">This is a research forecast provided
+as-is, without warranty. For official air quality alerts and health guidance,
+consult your state or local air agency and
+<a href="https://www.airnow.gov/">AirNow.gov</a>.</p>
+</div>
+</body>
+</html>

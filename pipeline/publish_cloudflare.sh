@@ -84,6 +84,7 @@ echo "  archived cycles:$ARCHIVED"
 
 # verification page + nightly obs-vs-forecast stats (written by verify_airnow.py)
 [ -f "$VERIFY_HTML" ] && cp "$VERIFY_HTML" "$SITE/verify.html"
+[ -f "$(dirname "$VIEWER")/about.html" ] && cp "$(dirname "$VIEWER")/about.html" "$SITE/about.html"
 
 # social-preview image for link cards (LinkedIn/Twitter og:image; 1200x627 png)
 [ -f "$(dirname "$VIEWER")/og-preview.png" ] && cp "$(dirname "$VIEWER")/og-preview.png" "$SITE/og-preview.png"
