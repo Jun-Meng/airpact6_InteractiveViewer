@@ -341,6 +341,7 @@
   .rail-toggle { display: none; }
 
   /* ---------- responsive ---------- */
+  #railHandle { display: none; }
   @media (max-width: 760px) {
     #app { flex-direction: column-reverse; }
     #rail {
@@ -351,6 +352,16 @@
     .section { padding: 13px 16px; }
     .hint { display: none; }
     .map-tag { width: min(302px, calc(100% - 62px)); }
+    #railHandle {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 8px 0 6px; cursor: pointer; user-select: none;
+      font-family: var(--mono); font-size: 10px; color: var(--ink-mute);
+      position: sticky; top: 0; background: var(--panel); z-index: 2;
+    }
+    .rh-bar { width: 36px; height: 4px; border-radius: 2px; background: var(--line); }
+    #rail { transition: max-height .25s ease; overflow-y: auto; }
+    #rail.collapsed { max-height: 34px; overflow: hidden; }
+    #rail.collapsed .rail-head, #rail.collapsed .section { display: none; }
     .map-legend { width: min(348px, calc(100% - 20px)); }
     .ml-head { flex-wrap: wrap; row-gap: 4px; }
     .tag-time { flex-wrap: wrap; }
@@ -366,6 +377,9 @@
 <div id="app">
 
   <aside id="rail">
+    <div id="railHandle" role="button" aria-label="Show or hide controls">
+      <span class="rh-bar"></span><span id="rhLabel">hide controls &#9662;</span>
+    </div>
     <div class="rail-head">
       <div class="brand">
         <h1>Northwest Air Quality Forecast</h1>
@@ -1857,6 +1871,20 @@ try{
   if(localStorage.getItem('hintSeen')==='1'){const h=document.getElementById('hint');if(h)h.style.display='none';}
   else setTimeout(hideHint,15000);
 }catch(e){setTimeout(hideHint,15000);}
+
+/* ---------- mobile: collapsible control drawer ---------- */
+(function(){
+  const rail=document.getElementById('rail'), h=document.getElementById('railHandle');
+  if(!rail||!h)return;
+  function setRail(open){
+    rail.classList.toggle('collapsed',!open);
+    document.getElementById('rhLabel').innerHTML=open?'hide controls &#9662;':'show controls &#9652;';
+    try{localStorage.setItem('railOpen',open?'1':'0');}catch(e){}
+    setTimeout(()=>{try{map.resize();}catch(e){}},280); // canvas refit after drawer animates
+  }
+  h.addEventListener('click',()=>setRail(rail.classList.contains('collapsed')));
+  try{if(localStorage.getItem('railOpen')==='0')setRail(false);}catch(e){}
+})();
 
 /* ---------- map chip collapse (mirrors the legend chip pattern) ---------- */
 function setChipOpen(open){
