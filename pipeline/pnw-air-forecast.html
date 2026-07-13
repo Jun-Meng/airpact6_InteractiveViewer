@@ -292,7 +292,7 @@
   .pin-hd {
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
     padding: 6px 10px; cursor: grab; border-bottom: 1px solid var(--line);
-    font-size: 10px; color: var(--ink); user-select: none;
+    font-size: 10px; color: var(--ink); user-select: none; touch-action: none;
   }
   .pin-hd:active { cursor: grabbing; }
   .pin-dot { display:inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
@@ -350,6 +350,15 @@
     .rail-head { padding: 14px 16px 12px; }
     .section { padding: 13px 16px; }
     .hint { display: none; }
+    .map-tag { width: min(302px, calc(100% - 62px)); }
+    .map-legend { width: min(348px, calc(100% - 20px)); }
+    .ml-head { flex-wrap: wrap; row-gap: 4px; }
+    .tag-time { flex-wrap: wrap; }
+    input[type=range]::-webkit-slider-thumb { width: 20px; height: 20px; }
+    input[type=range]::-moz-range-thumb { width: 18px; height: 18px; }
+    .toggle { padding: 9px 0; }
+    .lmx button { padding: 8px 2px; }
+    .pop-cat { font-size: 11px; }
   }
 </style>
 </head>
@@ -992,9 +1001,12 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
               else d2.style.display='none'; }
     };
     const svg=$('sps');
-    if(svg)svg.addEventListener('mousemove',e2=>{
-      const r=svg.getBoundingClientRect();
-      show(Math.round(((e2.clientX-r.left)/r.width*W-X0)/(X1-X0)*(n-1)));});
+    if(svg){
+      svg.style.touchAction='none'; // finger-scrub the chart on touch devices
+      svg.addEventListener('pointermove',e2=>{
+        const r=svg.getBoundingClientRect();
+        show(Math.round(((e2.clientX-r.left)/r.width*W-X0)/(X1-X0)*(n-1)));});
+    }
     if(siteId!=null)fetchObsSeries().then(d=>{
       let site=d.sites[siteId];
       if(!site){ // id mismatch (e.g. stale-cached /api/obs without ids): match by coordinates
@@ -1041,18 +1053,20 @@ function createPinCard(lng,lat,obs,siteId,title){
   card.style.left=Math.max(8,Math.min(p.x+16,wrap.clientWidth-340))+'px';
   card.style.top=Math.max(8,Math.min(p.y-60,wrap.clientHeight-280))+'px';
   const show=sp.wire(null);
+  // Pointer Events unify mouse + touch dragging (touch-action:none on the header)
   const hd=card.querySelector('.pin-hd'); let drag=null;
-  hd.addEventListener('mousedown',e=>{
+  hd.addEventListener('pointerdown',e=>{
     if(e.target.classList.contains('pin-x'))return;
     drag={dx:e.clientX-card.offsetLeft,dy:e.clientY-card.offsetTop};
-    card.style.zIndex=7; e.preventDefault();
+    card.style.zIndex=7; hd.setPointerCapture(e.pointerId); e.preventDefault();
   });
-  window.addEventListener('mousemove',e=>{
+  hd.addEventListener('pointermove',e=>{
     if(!drag)return;
     card.style.left=Math.max(0,Math.min(e.clientX-drag.dx,wrap.clientWidth-card.offsetWidth))+'px';
     card.style.top=Math.max(0,Math.min(e.clientY-drag.dy,wrap.clientHeight-44))+'px';
   });
-  window.addEventListener('mouseup',()=>{drag=null;});
+  hd.addEventListener('pointerup',()=>{drag=null;});
+  hd.addEventListener('pointercancel',()=>{drag=null;});
   const closeCard=()=>{SPARK_SYNCS.delete(show);marker.remove();card.remove();PIN_CARDS.delete(closeCard);};
   card.querySelector('.pin-x').addEventListener('click',closeCard);
   PIN_CARDS.add(closeCard);
