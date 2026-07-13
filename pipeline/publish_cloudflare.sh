@@ -19,7 +19,7 @@ STAGE_ROOT="/data/project/airpact/jmeng/Visualization/web_out"             # EDI
 VIEWER="/data/project/airpact/jmeng/Visualization/pipeline/pnw-air-forecast.html"  # EDIT viewer template
 FUNCTIONS="/data/project/airpact/jmeng/Visualization/pipeline/functions"    # EDIT Pages Functions (AirNow proxy)
 VERIFY_HTML="/data/project/airpact/jmeng/Visualization/pipeline/verify.html" # EDIT verification page
-INCLUDE_COGS=0                                                              # 1 to also publish .tif downloads
+INCLUDE_COGS=1                                                              # 1 to publish latest-cycle .tif downloads (data.html)
 
 # ---- credentials (cron has a bare environment, so source them from a file) ----
 # Create ~/.cloudflare_env  (chmod 600) containing:
@@ -68,7 +68,19 @@ stage_cycle(){ # $1 = source cycle dir, $2 = dest dir
 
 # data: manifest + packed binaries (the viewer needs these)
 stage_cycle "$SRC" "$SITE/data/latest"
-[ "$INCLUDE_COGS" = "1" ] && cp "$SRC"/*.tif "$SITE/data/latest/" 2>/dev/null || true
+# COGs (GeoTIFF downloads for data.html): LATEST cycle only, and skip any file
+# over Cloudflare Pages' 25 MiB per-file limit (deploy would fail otherwise).
+if [ "$INCLUDE_COGS" = "1" ]; then
+  for T in "$SRC"/*.tif; do
+    [ -e "$T" ] || continue
+    SZ=$(stat -c%s "$T" 2>/dev/null || stat -f%z "$T")
+    if [ "$SZ" -lt 26214400 ]; then
+      cp "$T" "$SITE/data/latest/"
+    else
+      echo "  WARNING: $(basename "$T") is $((SZ/1048576)) MiB (> Pages 25 MiB cap) — skipped"
+    fi
+  done
+fi
 
 # archive: every completed cycle under data/<cycle>/, plus an index the viewer
 # uses for its "Forecast cycle" selector. Wrangler uploads are content-hashed,
@@ -85,6 +97,7 @@ echo "  archived cycles:$ARCHIVED"
 # verification page + nightly obs-vs-forecast stats (written by verify_airnow.py)
 [ -f "$VERIFY_HTML" ] && cp "$VERIFY_HTML" "$SITE/verify.html"
 [ -f "$(dirname "$VIEWER")/about.html" ] && cp "$(dirname "$VIEWER")/about.html" "$SITE/about.html"
+[ -f "$(dirname "$VIEWER")/data.html" ] && cp "$(dirname "$VIEWER")/data.html" "$SITE/data.html"
 
 # social-preview image for link cards (LinkedIn/Twitter og:image; 1200x627 png)
 [ -f "$(dirname "$VIEWER")/og-preview.png" ] && cp "$(dirname "$VIEWER")/og-preview.png" "$SITE/og-preview.png"
@@ -130,6 +143,10 @@ cat > "$SITE/_headers" <<HDR
   Cache-Control: no-cache
 /verify.html
   Cache-Control: no-cache
+/data.html
+  Cache-Control: no-cache
+/data/latest/*.tif
+  Cache-Control: public, max-age=86400
 /data/verification/summary.json
   Cache-Control: no-cache
 /data/verification/sites.json

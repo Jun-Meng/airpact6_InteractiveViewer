@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Data downloads — Northwest Air Quality Forecast</title>
+<meta name="description" content="Download AIRPACT-6 forecast fields as GeoTIFF/COG or packed binaries, plus verification statistics."/>
+<style>
+:root{--bg:#f6f7f8;--card:#fff;--ink:#1d2630;--ink-mute:#5f6b76;--ink-faint:#8a949c;
+  --line:#e3e6e9;--blue:#2f6fd0;--mono:ui-monospace,'SF Mono',Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:26px 18px 60px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:16px;margin:26px 0 8px}
+p{margin:0 0 12px}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.sub{font-size:13px;color:var(--ink-mute);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:8px 0}
+.mono{font-family:var(--mono);font-size:12px}
+.note{font-size:13px;color:var(--ink-mute)}
+.frow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fname{font-weight:600;font-size:14px}
+.fmeta{font-size:12px;color:var(--ink-faint)}
+.dl{display:inline-block;border:1px solid var(--blue);color:var(--blue);border-radius:7px;
+  padding:4px 14px;font-size:13px;white-space:nowrap}
+.dl:hover{background:var(--blue);color:#fff;text-decoration:none}
+.dl.plain{border-color:#c9ced3;color:var(--ink-mute)}
+.dl.plain:hover{background:#eef0f2;color:var(--ink)}
+select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid #c9ced3;border-radius:7px;
+  background:#fff;color:var(--ink)}
+pre{background:#f1f3f5;border-radius:8px;padding:12px 14px;overflow-x:auto;
+  font-family:var(--mono);font-size:12px;line-height:1.55;margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+td,th{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:#eef0f2;font-weight:600}
+.pill{display:inline-block;background:#eef0f2;border-radius:5px;padding:1px 7px;
+  font-size:11px;color:var(--ink-mute);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Data downloads</h1>
+<p class="sub"><a href="index.html">&larr; back to the map</a> ·
+  <a href="verify.html">verification</a> · <a href="about.html">about</a></p>
+
+<p>Everything the <a href="index.html">interactive map</a> shows is downloadable
+here for research use: the gridded 72-hour forecast fields, the site's own
+compact binary format, and the observation-vs-forecast verification
+statistics. Please see the <a href="#citing">citation</a> and the as-is
+disclaimer at the bottom.</p>
+
+<div class="card">
+  <div class="frow">
+    <label for="cycleSel" style="font-size:13px;color:var(--ink-mute)">Forecast cycle</label>
+    <select id="cycleSel"></select>
+    <span id="cycleMeta" class="fmeta"></span>
+  </div>
+</div>
+
+<h2>Gridded forecast fields</h2>
+<p class="note" id="cogNote" style="display:none">GeoTIFFs are published for the
+<b>latest</b> cycle only. For archived cycles, use the packed binaries below —
+the format spec and reader snippet make them fully usable.</p>
+<div id="files"></div>
+
+<h2>Verification statistics</h2>
+<div class="card">
+  <div class="frow">
+    <div>
+      <div class="fname">summary.json</div>
+      <div class="fmeta">domain/region skill by metric and lead day — bias, RMSE, r, ozone-exceedance counts (90-day window, nightly)</div>
+    </div>
+    <a class="dl" href="data/verification/summary.json" download>JSON</a>
+  </div>
+</div>
+<div class="card">
+  <div class="frow">
+    <div>
+      <div class="fname">sites.json</div>
+      <div class="fmeta">per-monitor 30-day pooled bias / RMSE / n for each metric</div>
+    </div>
+    <a class="dl" href="data/verification/sites.json" download>JSON</a>
+  </div>
+</div>
+<p class="note">Statistics are computed by pairing AirNow observations with the
+archived forecast that covered each day; methodology on the
+<a href="verify.html">verification page</a>.</p>
+
+<h2>Reading the GeoTIFF (COG)</h2>
+<p>One file per pollutant per cycle. 72 bands = 72 forecast hours; each band
+description is the valid time in Pacific time. <span class="pill">float32</span>
+<span class="pill">EPSG:3857</span> <span class="pill">NaN = nodata</span>
+Units: µg/m³ (PM2.5), ppb (ozone).</p>
+<pre>import rasterio
+ds = rasterio.open("pm25_20260712.tif")
+pm = ds.read(1)                # band N = forecast hour N-1
+print(ds.descriptions[0])      # e.g. "2026-07-12 05:00 PDT"
+print(ds.crs, ds.bounds)</pre>
+
+<h2>Reading the packed binaries</h2>
+<p>The viewer's own format — much smaller than the GeoTIFFs and available for
+<b>every archived cycle</b>. Each cycle directory has a
+<span class="mono">manifest.json</span> describing the grid plus gzipped
+<span class="mono">.bin</span> files:</p>
+<table>
+  <tr><th>File</th><th>Layout</th></tr>
+  <tr><td class="mono">pm25_&lt;cycle&gt;.bin.gz<br>o3_&lt;cycle&gt;.bin.gz</td>
+      <td>uint16 little-endian, hour-major, rows N&rarr;S, cols W&rarr;E.
+          Value = stored/<span class="mono">scale</span> (per-species
+          <span class="mono">scale</span> in the manifest). 65535 = nodata.</td></tr>
+  <tr><td class="mono">daily_&lt;cycle&gt;.bin.gz</td>
+      <td>day-major, then [24-h PM2.5 mean, ozone MDA8] per day; same
+          scaling; day list in <span class="mono">manifest.daily</span>.</td></tr>
+</table>
+<pre>import gzip, json, numpy as np, urllib.request as rq
+base = "https://nw-air-forecast.pages.dev/data/20260712/"
+man  = json.load(rq.urlopen(base + "manifest.json"))
+H, W = man["grid"]["height"], man["grid"]["width"]
+sp   = man["species"]["pm25"]
+raw  = gzip.decompress(rq.urlopen(base + sp["bin"] + ".gz").read())
+a    = np.frombuffer(raw, "&lt;u2").reshape(-1, H, W).astype(float)
+a[a == 65535] = np.nan
+pm   = a / sp["scale"]         # (72, H, W) in µg/m³; hours in man["hours"]</pre>
+
+<h2 id="citing">Citing the data</h2>
+<p class="mono" style="font-size:13px">AIRPACT-6 air quality forecast (Northwest Air
+Quality Forecast visualization), Washington State University,
+https://nw-air-forecast.pages.dev/ (cycle YYYYMMDD, accessed YYYY-MM-DD).</p>
+
+<p class="note" style="margin-top:24px">This is a research forecast provided
+as-is, without warranty; fields are model output, not observations. Bulk or
+automated downloading of many cycles is fine — files are served from a CDN —
+but please open a <a href="https://github.com/Jun-Meng/airpact6_InteractiveViewer/issues">GitHub
+issue</a> if you need a different format or historical data beyond what is
+listed here.</p>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmtMB=b=>b>=1e6?(b/1e6).toFixed(1)+' MB':Math.round(b/1e3)+' kB';
+const SP_LABEL={pm25:'PM2.5',o3:'Ozone'};
+let CYCLES=[],LATEST=null;
+
+function card(name,meta,href,label,plain){
+  return `<div class="card"><div class="frow"><div>
+    <div class="fname">${name}</div><div class="fmeta">${meta}</div></div>
+    <a class="dl${plain?' plain':''}" href="${href}" download>${label}</a></div></div>`;
+}
+
+async function renderCycle(c){
+  const isLatest=(c===LATEST);
+  const dir='data/'+(isLatest?'latest':c)+'/';
+  $('files').innerHTML='<p class="note">loading manifest…</p>';
+  $('cogNote').style.display=isLatest?'none':'block';
+  let man;
+  try{man=await(await fetch(dir+'manifest.json')).json();}
+  catch(e){$('files').innerHTML='<p class="note">Could not load manifest for this cycle.</p>';return;}
+  const g=man.grid||{}, it=(man.init_time&&man.init_time.local)||'';
+  $('cycleMeta').textContent=`init ${it.slice(0,16).replace('T',' ')} PT · ${
+    (man.hours||[]).length} hourly steps · grid ${g.width}×${g.height} (EPSG:3857)`;
+  let h='';
+  for(const [sp,m] of Object.entries(man.species||{})){
+    if(isLatest&&m.cog){
+      h+=card(m.cog,`GeoTIFF (COG) · 72 bands = hours · ${m.units} · float32, NaN nodata`,
+              dir+m.cog,(m.cog_bytes?fmtMB(m.cog_bytes):'GeoTIFF'));
+    }
+    h+=card(m.bin+'.gz',`${SP_LABEL[sp]||sp} packed binary · uint16 · ${m.units} · scale ${m.scale}`,
+            dir+m.bin+'.gz',(m.bin_bytes?'≤'+fmtMB(m.bin_bytes):'bin.gz'),true);
+  }
+  if(man.daily&&man.daily.bin)
+    h+=card(man.daily.bin+'.gz',
+      `daily products · 24-h PM2.5 mean + ozone MDA8 · ${(man.daily.days||[]).length} day(s)`,
+      dir+man.daily.bin+'.gz','bin.gz',true);
+  h+=card('manifest.json','grid, times, scales, bounding box — needed to decode the binaries',
+          dir+'manifest.json','JSON',true);
+  $('files').innerHTML=h;
+}
+
+(async()=>{
+  try{CYCLES=await(await fetch('data/cycles.json')).json();}catch(e){CYCLES=[];}
+  CYCLES.sort().reverse();
+  LATEST=CYCLES[0]||null;
+  const sel=$('cycleSel');
+  sel.innerHTML=CYCLES.map((c,i)=>`<option value="${c}">${c.slice(0,4)}-${c.slice(4,6)}-${c.slice(6)}${i===0?' (latest)':''}</option>`).join('')
+    ||'<option>no cycles</option>';
+  sel.onchange=()=>renderCycle(sel.value);
+  if(LATEST)renderCycle(LATEST);
+})();
+</script>
+<!-- Cloudflare Web Analytics (privacy-preserving, no cookies) --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "0372013eb4d143cc99b7465959ad4dad"}'></script>
+</body>
+</html>
