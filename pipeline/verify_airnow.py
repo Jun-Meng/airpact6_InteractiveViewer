@@ -194,6 +194,14 @@ def verify_day(day, key):
         if t >= day_end:
             continue    # spillover hours feed MDA8 only, not the hourly stats
         utc = r["UTC"][:13] + ":00"
+        # site-history obs: record independently of model availability (the
+        # cycle starts 01:00 PT, so midnight would otherwise be a fake gap)
+        if 1 in cycles:
+            slot = int((t - t0).total_seconds() // 3600)
+            if 0 <= slot < 24:
+                e = ser.setdefault(sid, {}).setdefault(
+                    sp, {"o": [None] * 24, "f": [None] * 24})
+                e["o"][slot] = round(float(v), 1)
         for ld, cyc in cycles.items():
             hidx = cyc["hours"].get(utc)
             if hidx is None:
@@ -202,12 +210,6 @@ def verify_day(day, key):
             if f is None:
                 continue
             o = float(v)
-            if ld == 1:      # day-1 hourly obs for the site-history series
-                slot = int((t - t0).total_seconds() // 3600)
-                if 0 <= slot < 24:
-                    e = ser.setdefault(sid, {}).setdefault(
-                        sp, {"o": [None] * 24, "f": [None] * 24})
-                    e["o"][slot] = round(o, 1)
             k = (sid, sp, ld)
             a = rec.setdefault(k, [0, 0.0, 0.0, 0.0, 0.0, 0.0])
             b = lh.setdefault((sp, hidx), [0, 0.0, 0.0, 0.0, 0.0, 0.0])

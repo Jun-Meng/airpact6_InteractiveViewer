@@ -1022,7 +1022,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       const when=new Date(obs.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
         hour:'numeric',minute:'2-digit',timeZoneName:'short'});
       const a=aqiOf(species,+obs.v);
-      seed=`AIRNOW latest: ${(+obs.v).toFixed(pd)} ${unit} · ${when}${a>=0?` · ${esc(CATS[catIndex(a)].name)}`:''}`;
+      seed=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${(+obs.v).toFixed(pd)}</b> ${unit} · ${when}${a>=0?` · <b style="color:#5b9bec">${esc(CATS[catIndex(a)].name)}</b>`:''}`;
     }
     latestLine=`<p class="pop-t" id="spn_${K}" style="margin:0 0 2px${seed?'':';display:none'}">${seed}</p>`;
   }
@@ -1111,8 +1111,8 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       if(nl&&li>=0){
         const ti=DATA.timeInfo(li), a=aqiOf(species,ovals[li]);
         nl.style.display='';
-        nl.textContent=`AIRNOW latest: ${ovals[li].toFixed(pd)} ${unit} · ${ti.time12} ${ti.tz}`
-          +(a>=0?` · ${CATS[catIndex(a)].name}`:'');
+        nl.innerHTML=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${ovals[li].toFixed(pd)}</b> ${unit} · ${ti.time12} ${ti.tz}`
+          +(a>=0?` · <b style="color:#5b9bec">${esc(CATS[catIndex(a)].name)}</b>`:'');
       }
       show(lastH);
     }).catch(()=>{});
@@ -1137,7 +1137,7 @@ function createPinCard(lng,lat,obs,siteId,title){
   const wrap=document.getElementById('map-wrap');
   const card=document.createElement('div'); card.className='pin-card'; card.style.borderColor=col;
   const sp=buildSpark(lng,lat,obs,siteId,title,true);
-  card.innerHTML=`<div class="pin-hd"><span><span class="pin-dot" style="background:${col}"></span>${esc(title)}</span><span class="pin-x" title="close">&times;</span></div>
+  card.innerHTML=`<div class="pin-hd"><span><span class="pin-dot" style="background:${col}"></span>${esc(title)}${siteId!=null?' <span class="hist-chip pin-hist">site history &rarr;</span>':''}</span><span class="pin-x" title="close">&times;</span></div>
     <div class="pin-bd">${sp.html}</div>`;
   wrap.appendChild(card);
   const p=map.project([lng,lat]);
@@ -1147,7 +1147,7 @@ function createPinCard(lng,lat,obs,siteId,title){
   // Pointer Events unify mouse + touch dragging (touch-action:none on the header)
   const hd=card.querySelector('.pin-hd'); let drag=null;
   hd.addEventListener('pointerdown',e=>{
-    if(e.target.classList.contains('pin-x'))return;
+    if(e.target.classList.contains('pin-x')||e.target.classList.contains('pin-hist'))return;
     drag={dx:e.clientX-card.offsetLeft,dy:e.clientY-card.offsetTop};
     card.style.zIndex=7; hd.setPointerCapture(e.pointerId); e.preventDefault();
   });
@@ -1160,6 +1160,8 @@ function createPinCard(lng,lat,obs,siteId,title){
   hd.addEventListener('pointercancel',()=>{drag=null;});
   const closeCard=()=>{SPARK_SYNCS.delete(show);marker.remove();card.remove();PIN_CARDS.delete(closeCard);};
   card.querySelector('.pin-x').addEventListener('click',closeCard);
+  const ph=card.querySelector('.pin-hist');
+  if(ph)ph.addEventListener('click',()=>openHistory({id:siteId,name:title,lon:lng,lat:lat}));
   PIN_CARDS.add(closeCard);
 }
 function closeAllPins(){[...PIN_CARDS].forEach(f=>f());}
@@ -1276,14 +1278,10 @@ function attachSkill(elId,siteId,sp){
     const rec=d.sites[siteId]&&d.sites[siteId][sp];
     if(!rec||rec.n<(SKILL_MIN[sp]||120))return;
     el.style.display='';
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin:6px 0 8px;background:rgba(91,155,236,.06)">
-      <span style="font-size:13px;color:#5b9bec">&#9678;</span>
-      <div style="flex:1;min-width:0">
-        <p class="pop-t" style="margin:0;color:var(--ink)">${(sp!=='m8'&&d.day1_cycles)?`Day-1 skill here, last ${d.day1_cycles} forecasts`:`${d.window_days}-day skill here`}: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]}</p>
-        <p class="pop-t" style="margin:2px 0 0">${SKILL_LBL[sp]} · ${rec.n.toLocaleString()} pairs · ${skillPhrase(sp,rec.b)}</p>
-      </div>
-      <a href="verify.html" style="font-size:10px;color:#5b9bec;text-decoration:none;white-space:nowrap">details &rarr;</a>
-    </div>`;
+    // slim one-liner (boxed card retired 07-15); detail moves to the tooltip
+    el.innerHTML=`<p class="pop-t" style="margin:2px 0 4px" title="${SKILL_LBL[sp]} · ${rec.n.toLocaleString()} pairs · ${skillPhrase(sp,rec.b)}">
+      <span style="color:#5b9bec">&#9678;</span> ${(sp!=='m8'&&d.day1_cycles)?`day-1 skill (past ${d.day1_cycles} days)`:`${d.window_days}-day skill`}: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]} ·
+      <a href="verify.html" style="color:#5b9bec;text-decoration:none;white-space:nowrap">details &rarr;</a></p>`;
   }).catch(()=>{});
 }
 
@@ -1340,12 +1338,17 @@ function openHistory(site){
       <div class="hist-legend" id="histLegend"></div>
       <div class="hist-read" id="histRead">&nbsp;</div>
       <svg id="histSvg" viewBox="0 0 640 230" style="display:block;width:100%;cursor:crosshair;touch-action:none"></svg>
-      <div class="hist-foot"><span id="histStats"></span><span class="spark-pin" id="histCsv">&#8595; CSV</span></div>
+      <div class="hist-foot"><span id="histStats"></span>
+        <span style="display:flex;gap:10px;align-items:center">
+          <span class="spark-pin" id="histCsv">&#8595; CSV</span>
+          <span class="hist-btn" id="histClose">close</span>
+        </span></div>
       <div class="hist-load" id="histLoad">loading site history&hellip;</div>
     </div>`;
   wrap.appendChild(bg);
   bg.addEventListener('click',e=>{if(e.target===bg)closeHistory();});
   document.getElementById('histX').onclick=closeHistory;
+  document.getElementById('histClose').onclick=closeHistory;
   HIST_ESC=e=>{if(e.key==='Escape')closeHistory();};
   document.addEventListener('keydown',HIST_ESC);
   const st={site,sp:(view==='daily'?(dailyPol==='o3'?'o3':'pm'):species),
