@@ -1024,11 +1024,15 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       const a=aqiOf(species,+obs.v);
       seed=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${(+obs.v).toFixed(pd)}</b> ${unit} · ${when}${a>=0?` · <b style="color:#5b9bec">${esc(CATS[catIndex(a)].name)}</b>`:''}`;
     }
-    latestLine=`<p class="pop-t" id="spn_${K}" style="margin:0 0 2px${seed?'':';display:none'}">${seed}</p>`;
+    // order: AIRNOW latest · skill slot · hairline. The rule closes the
+    // observation-facts tier and stays hidden until either line is visible,
+    // so sparse popups don't show two stacked rules.
+    latestLine=`<p class="pop-t" id="spn_${K}" style="margin:0 0 2px${seed?'':';display:none'}">${seed}</p>`
+      +`<div id="spslot_${K}" style="display:none"></div>`
+      +`<div id="spdiv_${K}" style="border-top:1px solid var(--line);margin:7px 0 6px${seed?'':';display:none'}"></div>`;
   }
   const html=
     latestLine+
-    `<div id="spslot_${K}" style="display:none"></div>`+
     `<div style="display:flex;gap:24px;flex-wrap:wrap">
        <div>
          <div><span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
@@ -1111,6 +1115,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       if(nl&&li>=0){
         const ti=DATA.timeInfo(li), a=aqiOf(species,ovals[li]);
         nl.style.display='';
+        const dv=$('spdiv'); if(dv)dv.style.display='';
         nl.innerHTML=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${ovals[li].toFixed(pd)}</b> ${unit} · ${ti.time12} ${ti.tz}`
           +(a>=0?` · <b style="color:#5b9bec">${esc(CATS[catIndex(a)].name)}</b>`:'');
       }
@@ -1278,6 +1283,10 @@ function attachSkill(elId,siteId,sp){
     const rec=d.sites[siteId]&&d.sites[siteId][sp];
     if(!rec||rec.n<(SKILL_MIN[sp]||120))return;
     el.style.display='';
+    if(elId.indexOf('spslot')===0){ // reveal the facts-tier hairline with the skill line
+      const dv=document.getElementById(elId.replace('spslot','spdiv'));
+      if(dv)dv.style.display='';
+    }
     // slim one-liner (boxed card retired 07-15); detail moves to the tooltip
     el.innerHTML=`<p class="pop-t" style="margin:2px 0 4px" title="${SKILL_LBL[sp]} · ${rec.n.toLocaleString()} pairs · ${skillPhrase(sp,rec.b)}">
       <span style="color:#5b9bec">&#9678;</span> ${(sp!=='m8'&&d.day1_cycles)?`day-1 skill (past ${d.day1_cycles} days)`:`${d.window_days}-day skill`}: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]} ·
