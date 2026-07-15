@@ -1036,11 +1036,11 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     latestLine=
       `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 2px">
          <p class="pop-t" id="spn_${K}" style="margin:0${seed?'':';display:none'}">${seed}</p>
-         <span class="hist-chip" id="spwh_${K}">site history &rarr;</span>
+         <span class="hist-chip" id="spwh_${K}" style="margin-left:auto;float:right">site history &rarr;</span>
        </div>`
       +`<div id="spdiv_${K}" style="border-top:1px solid var(--line);margin:7px 0 4px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
           <span style="font-size:10px;color:var(--ink-mute);letter-spacing:.08em;text-transform:uppercase">forecast time series</span>
-          <span style="white-space:nowrap;margin-right:-5px"><span class="hist-btn${SPX==='pm'?' on':''}" id="ps1_${K}">PM2.5</span><span class="hist-btn${SPX==='o3'?' on':''}" id="ps2_${K}" style="margin-left:4px">O3</span></span>
+          <span style="white-space:nowrap;margin-left:auto;float:right;margin-right:-5px"><span class="hist-btn${SPX==='pm'?' on':''}" id="ps1_${K}">PM2.5</span><span class="hist-btn${SPX==='o3'?' on':''}" id="ps2_${K}" style="margin-left:4px">O3</span></span>
         </div>`
       +`<div id="spslot_${K}" style="display:none"></div>`;
   }
