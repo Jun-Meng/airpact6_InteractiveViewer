@@ -1036,25 +1036,20 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     latestLine=
       `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 2px">
          <p class="pop-t" id="spn_${K}" style="margin:0${seed?'':';display:none'}">${seed}</p>
-         ${noPin?'':`<span class="hist-chip" id="spwh_${K}">site history &rarr;</span>`}
+         <span class="hist-chip" id="spwh_${K}">site history &rarr;</span>
        </div>`
       +`<div id="spdiv_${K}" style="border-top:1px solid var(--line);margin:7px 0 4px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
           <span style="font-size:10px;color:var(--ink-mute);letter-spacing:.08em;text-transform:uppercase">forecast time series</span>
-          ${noPin?'':`<span style="white-space:nowrap"><span class="hist-btn${SPX==='pm'?' on':''}" id="ps1_${K}">PM2.5</span><span class="hist-btn${SPX==='o3'?' on':''}" id="ps2_${K}" style="margin-left:4px">O3</span></span>`}
+          <span style="white-space:nowrap;margin-right:-5px"><span class="hist-btn${SPX==='pm'?' on':''}" id="ps1_${K}">PM2.5</span><span class="hist-btn${SPX==='o3'?' on':''}" id="ps2_${K}" style="margin-left:4px">O3</span></span>
         </div>`
       +`<div id="spslot_${K}" style="display:none"></div>`;
   }
   const html=
     latestLine+
-    `<div style="display:flex;gap:24px;flex-wrap:wrap">
-       <div>
-         <div><span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
-         <span class="pop-cat" id="spc_${K}" style="margin-top:3px"></span>
-       </div>
-       ${siteId!=null?`<div style="color:#5b9bec">
-         <div><span style="font-size:11px">AIRNOW:</span> <span class="pop-v" id="spo_${K}">–</span> <span style="font-size:11px">${unit}</span></div>
-         <span class="pop-cat" id="spco_${K}" style="margin-top:3px;display:none"></span>
-       </div>`:''}
+    `<div style="margin-top:2px">
+       <span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span class="pop-cat" id="spc_${K}" style="margin-top:0;vertical-align:2px"></span>
+       ${siteId!=null?`<span style="margin-left:14px;font-size:11px;color:#5b9bec">AIRNOW:</span> <span class="pop-v" id="spo_${K}" style="color:#5b9bec">–</span> <span class="pop-cat" id="spco_${K}" style="margin-top:0;vertical-align:2px;display:none"></span>`:''}
+       <span style="font-size:11px;color:var(--ink-mute)"> ${unit}</span>
      </div>
      <p class="pop-t" id="spw_${K}" style="margin:2px 0 4px"></p>
      <svg id="sps_${K}" viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;cursor:crosshair">
@@ -1089,11 +1084,13 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
         +((siteId!=null&&ovals&&ov===null)?(future?' · no obs yet':' · no obs'):'');
       const chip=$('spc');
       if(isFinite(c)){const a=aqiOf(SPX,c),cat=CATS[catIndex(a)];
-        chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`${cat.name} · AQI ${a}`;}
+        chip.style.display='';chip.style.background=rgb(cat.col);
+        chip.textContent=`AQI ${a}`;chip.title=cat.name;}
       else chip.style.display='none';
       const chipO=$('spco');
       if(chipO){ if(ov!==null){const ao=aqiOf(SPX,ov),co=CATS[catIndex(ao)];
-          chipO.style.display='';chipO.style.background=rgb(co.col);chipO.textContent=`${co.name} · AQI ${ao}`;}
+          chipO.style.display='';chipO.style.background=rgb(co.col);
+          chipO.textContent=`AQI ${ao}`;chipO.title=co.name;}
         else chipO.style.display='none'; }
       $('spl').setAttribute('x1',x(h));$('spl').setAttribute('x2',x(h));
       const d=$('spd'); d.setAttribute('cx',x(h)); d.setAttribute('cy',isFinite(c)?y(c):Y0);
@@ -1171,14 +1168,18 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
 }
 
 /* ---------- pinned comparison cards (draggable, screen-anchored) ---------- */
-function createPinCard(lng,lat,obs,siteId,title){
+function createPinCard(lng,lat,obs,siteId,title,spOv){
+  // pollutant toggle on a pinned card: rebuild the card for the other species
+  // (obs dropped — it belongs to the original species; series refills it)
+  if(spOv&&spOv!==species){const keep=species;species=spOv;
+    try{createPinCard(lng,lat,null,siteId,title);}finally{species=keep;}return;}
   const col=PIN_COLORS[PIN_SEQ++%PIN_COLORS.length];
   const dot=document.createElement('div'); dot.className='pin-mark'; dot.style.background=col;
   const marker=new maplibregl.Marker({element:dot}).setLngLat([lng,lat]).addTo(map);
   const wrap=document.getElementById('map-wrap');
   const card=document.createElement('div'); card.className='pin-card'; card.style.borderColor=col;
   const sp=buildSpark(lng,lat,obs,siteId,title,true);
-  card.innerHTML=`<div class="pin-hd"><span><span class="pin-dot" style="background:${col}"></span>${esc(title)}${siteId!=null?' <span class="hist-chip pin-hist">site history &rarr;</span>':''}</span><span class="pin-x" title="close">&times;</span></div>
+  card.innerHTML=`<div class="pin-hd"><span><span class="pin-dot" style="background:${col}"></span>${esc(title)}</span><span class="pin-x" title="close">&times;</span></div>
     <div class="pin-bd">${sp.html}</div>`;
   wrap.appendChild(card);
   const p=map.project([lng,lat]);
@@ -1201,8 +1202,11 @@ function createPinCard(lng,lat,obs,siteId,title){
   hd.addEventListener('pointercancel',()=>{drag=null;});
   const closeCard=()=>{SPARK_SYNCS.delete(show);marker.remove();card.remove();PIN_CARDS.delete(closeCard);};
   card.querySelector('.pin-x').addEventListener('click',closeCard);
-  const ph=card.querySelector('.pin-hist');
-  if(ph)ph.addEventListener('click',()=>openHistory({id:siteId,name:title,lon:lng,lat:lat}));
+  // pollutant toggle + skill line, matching the monitor popup
+  const p1=document.getElementById('ps1_'+sp.K), p2=document.getElementById('ps2_'+sp.K);
+  if(p1&&species!=='pm')p1.onclick=()=>{closeCard();createPinCard(lng,lat,null,siteId,title,'pm');};
+  if(p2&&species!=='o3')p2.onclick=()=>{closeCard();createPinCard(lng,lat,null,siteId,title,'o3');};
+  if(siteId!=null)attachSkill(sp.slotId,siteId,species);
   PIN_CARDS.add(closeCard);
 }
 function closeAllPins(){[...PIN_CARDS].forEach(f=>f());}
