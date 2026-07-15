@@ -980,10 +980,11 @@ function fetchObsSeries(){ // hourly obs for the viewed cycle's window, cached p
   return promise;
 }
 function buildSpark(lng,lat,obs,siteId,title,noPin){
+  const SPX=species; // capture: popup species survives the global changing later
   const n=DATA.nHours, vals=[];
-  for(let h=0;h<n;h++){const c=DATA.valueAt(species,h,lng,lat);vals.push(isFinite(c)?c:NaN);}
+  for(let h=0;h<n;h++){const c=DATA.valueAt(SPX,h,lng,lat);vals.push(isFinite(c)?c:NaN);}
   if(!vals.some(isFinite))return null;
-  const bp=species==='pm'?PM_BP:O3_BP, unit=DATA.units(species), pd=species==='pm'?1:0;
+  const bp=SPX==='pm'?PM_BP:O3_BP, unit=DATA.units(SPX), pd=SPX==='pm'?1:0;
   const K=++SPARK_SEQ, W=340,HH=116,X0=30,X1=W-8,Y0=HH-16,Y1=5;
   let vmax=Math.max(...vals.filter(isFinite));
   if(obs&&isFinite(+obs.v))vmax=Math.max(vmax,+obs.v);
@@ -1014,6 +1015,11 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     const ho=(new Date(obs.utc+':00Z').getTime()-DATA.epoch(0))/3600e3;
     if(ho>=0&&ho<=n-1)obsPt=`<circle cx="${x(ho).toFixed(1)}" cy="${y(+obs.v).toFixed(1)}" r="4" fill="#2f6fd0" stroke="#fff" stroke-width="1.3"/>`;
   }
+  // forecast peak: argmax of the model curve (amber marker + footer callout)
+  let peakH=-1,peakV=-Infinity;
+  for(let h=0;h<n;h++)if(isFinite(vals[h])&&vals[h]>peakV){peakV=vals[h];peakH=h;}
+  const peakMk=peakH>=0?`<line x1="${x(peakH).toFixed(1)}" y1="${Y1}" x2="${x(peakH).toFixed(1)}" y2="${Y0}" stroke="#ffb84d" stroke-width="0.6" stroke-dasharray="2 3" opacity="0.7"/>
+    <circle cx="${x(peakH).toFixed(1)}" cy="${y(peakV).toFixed(1)}" r="3" fill="none" stroke="#ffb84d" stroke-width="1.6"/>`:'';
   const h0=view==='hourly'?hour:0;
   let latestLine='';
   if(siteId!=null){
@@ -1021,7 +1027,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     if(obs&&isFinite(+obs.v)&&obs.utc){
       const when=new Date(obs.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
         hour:'numeric',minute:'2-digit',timeZoneName:'short'});
-      const a=aqiOf(species,+obs.v);
+      const a=aqiOf(SPX,+obs.v);
       seed=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${(+obs.v).toFixed(pd)}</b> ${unit} · ${when}${a>=0?` · <b style="color:#5b9bec">${esc(CATS[catIndex(a)].name)}</b>`:''}`;
     }
     // order: AIRNOW latest · skill slot · hairline. The rule closes the
@@ -1029,7 +1035,9 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     // so sparse popups don't show two stacked rules.
     latestLine=`<p class="pop-t" id="spn_${K}" style="margin:0 0 2px${seed?'':';display:none'}">${seed}</p>`
       +`<div id="spslot_${K}" style="display:none"></div>`
-      +`<div id="spdiv_${K}" style="border-top:1px solid var(--line);margin:7px 0 6px${seed?'':';display:none'}"></div>`;
+      +`<div id="spdiv_${K}" style="border-top:1px solid var(--line);margin:7px 0 6px;padding-top:6px${seed?'':';display:none'}">
+          <span style="font-size:10px;color:var(--ink-mute);letter-spacing:.08em;text-transform:uppercase">forecast time series</span>
+        </div>`;
   }
   const html=
     latestLine+
@@ -1045,7 +1053,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
      </div>
      <p class="pop-t" id="spw_${K}" style="margin:2px 0 4px"></p>
      <svg id="sps_${K}" viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;cursor:crosshair">
-       ${bands}${yax}${ticks}${line}${obsPt}
+       ${bands}${yax}${ticks}${peakMk}${line}${obsPt}
        <line x1="${X1-116}" y1="${Y1+5}" x2="${X1-100}" y2="${Y1+5}" stroke="var(--ink)" stroke-width="1.8"/>
        <text x="${X1-96}" y="${Y1+8}" font-size="9" fill="var(--ink-mute)">AIRPACT6</text>
        ${siteId!=null?`<line x1="${X1-44}" y1="${Y1+5}" x2="${X1-28}" y2="${Y1+5}" stroke="#5b9bec" stroke-width="1.8"/>
@@ -1055,8 +1063,12 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
        <circle id="spd2_${K}" r="3.4" fill="none" stroke="#5b9bec" stroke-width="1.8" style="display:none"/>
      </svg>
      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:8px">
-       ${(siteId==null&&obsPt)?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':'<span></span>'}
-       ${noPin?'':`<span class="spark-pin" id="pin_${K}" title="pin as a draggable card for side-by-side comparison">&#8853; pin</span>`}
+       ${peakH>=0?`<span id="pk_${K}" style="font-size:10px;color:#ffb84d;cursor:pointer" title="jump to the forecast peak">&#9650; peak ${peakV.toFixed(pd)} ${unit} · ${(t=>`${t.date} ${t.time12} ${t.tz}`)(DATA.timeInfo(peakH))}</span>`:'<span></span>'}
+       <span style="display:flex;gap:10px;align-items:center;white-space:nowrap">
+         ${(siteId==null&&obsPt)?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':''}
+         <span class="spark-pin" id="csv_${K}" title="download this chart's hourly data">&#8595; CSV</span>
+         ${noPin?'':`<span class="spark-pin" id="pin_${K}" title="pin as a draggable card for side-by-side comparison">&#8853; pin</span>`}
+       </span>
      </div>`;
   const wire=(popup)=>{
     const $=id=>document.getElementById(id+'_'+K);
@@ -1071,11 +1083,11 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       $('spw').textContent=`${ti.date} · ${ti.time12} ${ti.tz} · forecast hour ${h}`
         +((siteId!=null&&ovals&&ov===null)?(future?' · no obs yet':' · no obs'):'');
       const chip=$('spc');
-      if(isFinite(c)){const a=aqiOf(species,c),cat=CATS[catIndex(a)];
+      if(isFinite(c)){const a=aqiOf(SPX,c),cat=CATS[catIndex(a)];
         chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`${cat.name} · AQI ${a}`;}
       else chip.style.display='none';
       const chipO=$('spco');
-      if(chipO){ if(ov!==null){const ao=aqiOf(species,ov),co=CATS[catIndex(ao)];
+      if(chipO){ if(ov!==null){const ao=aqiOf(SPX,ov),co=CATS[catIndex(ao)];
           chipO.style.display='';chipO.style.background=rgb(co.col);chipO.textContent=`${co.name} · AQI ${ao}`;}
         else chipO.style.display='none'; }
       $('spl').setAttribute('x1',x(h));$('spl').setAttribute('x2',x(h));
@@ -1098,7 +1110,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
         for(const k in d.sites){const c=d.sites[k];
           if(Math.abs(c.lon-lng)<eps&&Math.abs(c.lat-lat)<eps){site=c;break;}}
       }
-      const arr=site&&site[species]; if(!arr)return;
+      const arr=site&&site[SPX]; if(!arr)return;
       ovals=arr.map(v=>v==null?NaN:v);
       let po='',seg=[];
       const fl=()=>{if(seg.length>1)po+=`<polyline fill="none" stroke="#5b9bec" stroke-width="1.5" stroke-linejoin="round" points="${seg.join(' ')}"/>`;seg=[];};
@@ -1113,7 +1125,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
       let li=-1; for(let h=Math.min(n,ovals.length)-1;h>=0;h--)if(isFinite(ovals[h])){li=h;break;}
       const nl=$('spn');
       if(nl&&li>=0){
-        const ti=DATA.timeInfo(li), a=aqiOf(species,ovals[li]);
+        const ti=DATA.timeInfo(li), a=aqiOf(SPX,ovals[li]);
         nl.style.display='';
         const dv=$('spdiv'); if(dv)dv.style.display='';
         nl.innerHTML=`<span style="color:#5b9bec">&#9679;</span> AIRNOW latest: <b style="color:#5b9bec">${ovals[li].toFixed(pd)}</b> ${unit} · ${ti.time12} ${ti.tz}`
@@ -1124,6 +1136,20 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     show(h0);
     SPARK_SYNCS.add(show);
     if(popup)popup.on('close',()=>SPARK_SYNCS.delete(show));
+    const pk=$('pk'); if(pk)pk.addEventListener('click',()=>show(peakH));
+    const csv=$('csv');
+    if(csv)csv.addEventListener('click',()=>{
+      const cyc=new Date(DATA.epoch(0)).toISOString().slice(0,10).replace(/-/g,'');
+      const rows=['time_pt,time_utc,forecast_'+SPX+',obs_'+SPX];
+      for(let h=0;h<n;h++){
+        const t=new Date(DATA.epoch(h));
+        rows.push(`${t.toLocaleString('sv-SE',{timeZone:'America/Los_Angeles'}).replace(' ','T')},${t.toISOString().slice(0,16)}Z,${isFinite(vals[h])?vals[h].toFixed(2):''},${(ovals&&isFinite(ovals[h]))?ovals[h].toFixed(2):''}`);
+      }
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
+      a.download=`${siteId!=null?String(siteId).replace(/[^A-Za-z0-9_.-]/g,'_'):lat.toFixed(3)+'_'+lng.toFixed(3)}_${SPX}_${cyc}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
+    });
     const pinBtn=$('pin');
     if(pinBtn)pinBtn.addEventListener('click',()=>{
       createPinCard(lng,lat,obs,siteId,title||`${lat.toFixed(2)}, ${lng.toFixed(2)}`);
@@ -1185,6 +1211,13 @@ function dailyBarsHTML(lng,lat){
   return `<svg viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;margin-top:6px">${bars}</svg>`;
 }
 
+function havKm(a1,o1,a2,o2){const r=Math.PI/180,h=Math.sin((a2-a1)*r/2)**2
+  +Math.cos(a1*r)*Math.cos(a2*r)*Math.sin((o2-o1)*r/2)**2;
+  return 2*6371*Math.asin(Math.sqrt(h));}
+function compass8(a1,o1,a2,o2){const r=Math.PI/180,
+  yv=Math.sin((o2-o1)*r)*Math.cos(a2*r),
+  xv=Math.cos(a1*r)*Math.sin(a2*r)-Math.sin(a1*r)*Math.cos(a2*r)*Math.cos((o2-o1)*r);
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(((Math.atan2(yv,xv)/r+360)%360)/45)%8];}
 function queryPoint(lng,lat){
   const b=DATA.bbox;
   if(lng<b[0]||lng>b[2]||lat<b[1]||lat>b[3])return;
@@ -1192,11 +1225,20 @@ function queryPoint(lng,lat){
     const c=DATA.valueAt(species,hour,lng,lat); if(!isFinite(c))return;
     const aqi=aqiOf(species,c),ci=catIndex(aqi),cat=CATS[ci],unit=DATA.units(species),spn=species==='pm'?'PM2.5':'Ozone';
     const sp=buildSpark(lng,lat,null,undefined,`${lat.toFixed(2)}, ${lng.toFixed(2)}`);
+    // nearest monitor: link every map click to ground truth
+    let nm=null,nd=1e9;
+    monMarkers.forEach(mk=>{const st=mk.site,d=havKm(lat,lng,st.lat,st.lon);if(d<nd){nd=d;nm=st;}});
+    const NMID='nmq_'+(++SPARK_SEQ);
+    const nmLine=nm?`<p class="pop-t" style="margin:2px 0 0"><span style="color:#5b9bec">&#9673;</span> nearest monitor:
+      <span id="${NMID}" style="color:#5b9bec;cursor:pointer">${esc(nm.name)} &rarr;</span>
+      <span style="color:var(--ink-faint)">(${nd<10?nd.toFixed(1):Math.round(nd)} km ${compass8(lat,lng,nm.lat,nm.lon)})</span></p>`:'';
     const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([lng,lat]).setHTML(
-      `<p class="pop-t">${spn} · 72-h forecast</p>${sp?sp.html:
+      `<p class="pop-t">${spn} · 72-h forecast</p>${nmLine}${sp?sp.html:
        `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
         <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`}`).addTo(map);
     if(sp)sp.wire(popup);
+    const nmEl=document.getElementById(NMID);
+    if(nmEl)nmEl.onclick=()=>{popup.remove();siteClick(nm);};
     updateReadingHourly({lng,lat,c,aqi,ci,unit,spn});
   } else {
     if(!DATA.daily)return;
@@ -1695,7 +1737,10 @@ function siteClickDaily(s){
   }).catch(()=>{obsState='none';draw();});
   draw();
 }
-function siteClick(s){
+function siteClick(s,spOv){
+  // spOv: rebuild this popup for the other pollutant WITHOUT changing the map
+  // layer — buildSpark captures the species (SPX), so scrubbing stays correct
+  if(spOv&&spOv!==species){const keep=species;species=spOv;try{siteClick(s);}finally{species=keep;}return;}
   if(view==='daily'&&DATA.daily){siteClickDaily(s);return;}
   const o=s[species]||null; // site may not report this pollutant (e.g. PM-only sites)
   const aqi=obsAQI(o), cat=aqi>=0?CATS[catIndex(aqi)]:null;
@@ -1716,12 +1761,16 @@ function siteClick(s){
   }
   const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(s.name)}${s.id?`<span class="hist-chip" id="hc_${VB}">site history &rarr;</span>`:''}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
+    `<p class="pop-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(s.name)}${s.id?`<span class="hist-chip" id="hc_${VB}">site history &rarr;</span>`:''}
+      <span style="margin-left:auto;white-space:nowrap"><span class="hist-btn${species==='pm'?' on':''}" id="ps1_${VB}">PM2.5</span><span class="hist-btn${species==='o3'?' on':''}" id="ps2_${VB}" style="margin-left:4px">O3</span></span></p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
   if(sp)sp.wire(popup);
   const hb=document.getElementById('hc_'+VB);
   if(hb)hb.onclick=()=>{popup.remove();openHistory(s);};
+  const ps1=document.getElementById('ps1_'+VB), ps2=document.getElementById('ps2_'+VB);
+  if(ps1&&species!=='pm')ps1.onclick=()=>{popup.remove();siteClick(s,'pm');};
+  if(ps2&&species!=='o3')ps2.onclick=()=>{popup.remove();siteClick(s,'o3');};
   // skill badge goes into the spark's slot (right under the AIRNOW-latest
   // line) so the two observation facts sit together above the forecast
   attachSkill(sp?sp.slotId:VB,s.id,species);
