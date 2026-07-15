@@ -251,15 +251,26 @@ def rebuild_summary(vdir, window):
     print(f"summary.json: {len(days)} days, {len(sites)} sites, {n} site-day records, "
           f"{(vdir / 'summary.json').stat().st_size / 1e6:.2f} MB")
 
-    # small per-site 30-day skill digest for the viewer's popup badges
-    # (all leads pooled; keyed site id -> metric -> bias/rmse/n)
-    digest_days = days[-30:]
+    # small per-site skill digest for the viewer's popup badges.
+    # Hourly metrics (pm, o3): DAY-1 pairs only (lead day 1 = the first 24
+    # forecast hours) from the last DAY1_CYCLES verified cycles — "how has
+    # today's-type forecast done here lately". MDA8 keeps the 30-day all-lead
+    # pool (1 pair/site/day; a 3-cycle window would be n=3, meaningless).
+    DAY1_CYCLES = 3
     agg = {}
+    for d in days[-DAY1_CYCLES:]:
+        for r in d["rec"]:
+            if r[1] in ("pm", "o3") and r[2] == 1:
+                a = agg.setdefault((r[0], r[1]), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                for i in range(6):
+                    a[i] += r[3 + i]
+    digest_days = days[-30:]
     for d in digest_days:
         for r in d["rec"]:
-            a = agg.setdefault((r[0], r[1]), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            for i in range(6):
-                a[i] += r[3 + i]
+            if r[1] == "m8":
+                a = agg.setdefault((r[0], "m8"), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
+                for i in range(6):
+                    a[i] += r[3 + i]
     dsites = {}
     for (sid, sp), a in agg.items():
         n2, so, sf, soo, sff, sof = a
@@ -271,6 +282,7 @@ def rebuild_summary(vdir, window):
             "n": n2}
     (vdir / "sites.json").write_text(json.dumps(
         {"updated": now_iso, "window_days": min(30, len(digest_days)),
+         "day1_cycles": min(DAY1_CYCLES, len(days)),
          "sites": dsites}, separators=(",", ":")))
     print(f"sites.json: skill digest for {len(dsites)} sites, "
           f"{(vdir / 'sites.json').stat().st_size / 1e3:.0f} KB")

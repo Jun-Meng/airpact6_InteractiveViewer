@@ -998,6 +998,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
   }
   const html=
     latestLine+
+    `<div id="spslot_${K}" style="display:none"></div>`+
     `<div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
        <span><span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></span>
        ${siteId!=null?`<span style="color:#5b9bec"><span style="font-size:11px">AIRNOW:</span> <span class="pop-v" id="spo_${K}">–</span> <span style="font-size:11px">${unit}</span></span>`:''}
@@ -1086,7 +1087,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
     });
     return show;
   };
-  return {html,wire};
+  return {html,wire,slotId:'spslot_'+K};
 }
 
 /* ---------- pinned comparison cards (draggable, screen-anchored) ---------- */
@@ -1220,7 +1221,7 @@ function fetchSiteSkill(){
   SITE_SKILL.catch(()=>{SITE_SKILL=null;});
   return SITE_SKILL;
 }
-const SKILL_MIN={pm:120,o3:120,m8:8};       // hide badges built on too few pairs
+const SKILL_MIN={pm:48,o3:48,m8:8};         // hide badges built on too few pairs (hourly: >=2 of 3 day-1 windows)
 const SKILL_UNIT={pm:'µg/m³',o3:'ppb',m8:'ppb'};
 const SKILL_LBL={pm:'PM2.5 hourly',o3:'ozone hourly',m8:'ozone MDA8'};
 function skillPhrase(sp,b){
@@ -1236,10 +1237,10 @@ function attachSkill(elId,siteId,sp){
     const rec=d.sites[siteId]&&d.sites[siteId][sp];
     if(!rec||rec.n<(SKILL_MIN[sp]||120))return;
     el.style.display='';
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin-top:8px;background:rgba(91,155,236,.06)">
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:6px 9px;margin:6px 0 8px;background:rgba(91,155,236,.06)">
       <span style="font-size:13px;color:#5b9bec">&#9678;</span>
       <div style="flex:1;min-width:0">
-        <p class="pop-t" style="margin:0;color:var(--ink)">${d.window_days}-day skill here: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]}</p>
+        <p class="pop-t" style="margin:0;color:var(--ink)">${(sp!=='m8'&&d.day1_cycles)?`Day-1 skill here, last ${d.day1_cycles} forecasts`:`${d.window_days}-day skill here`}: bias <b style="color:#5b9bec">${rec.b>=0?'+':''}${rec.b}</b> · RMSE <b style="color:#5b9bec">${rec.r}</b> ${SKILL_UNIT[sp]}</p>
         <p class="pop-t" style="margin:2px 0 0">${SKILL_LBL[sp]} · ${rec.n.toLocaleString()} pairs · ${skillPhrase(sp,rec.b)}</p>
       </div>
       <a href="verify.html" style="font-size:10px;color:#5b9bec;text-decoration:none;white-space:nowrap">details &rarr;</a>
@@ -1380,11 +1381,13 @@ function siteClick(s){
   }
   const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)}</p>${detail}<div id="${VB}" style="display:none"></div>`+
+    `<p class="pop-t">${esc(s.name)}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
   if(sp)sp.wire(popup);
-  attachSkill(VB,s.id,species);
+  // skill badge goes into the spark's slot (right under the AIRNOW-latest
+  // line) so the two observation facts sit together above the forecast
+  attachSkill(sp?sp.slotId:VB,s.id,species);
 }
 /* dots follow the time bar: colored by the observation at the current hour
    (daily view: day mean); dimmed when that hour has no obs (future / gap);
