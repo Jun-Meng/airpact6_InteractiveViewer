@@ -176,6 +176,7 @@ def verify_day(day, key):
 
     sites, rec, lh = {}, {}, {}
     o3_series = {}          # sid -> {hour offset from local midnight: ppb}
+    ser = {}                # sid -> sp -> {"o":[24], "f":[24]} day-1 paired series
     n_pairs = 0
     for r in rows:
         sp = {"PM2.5": "pm", "OZONE": "o3"}.get(r.get("Parameter"))
@@ -201,6 +202,12 @@ def verify_day(day, key):
             if f is None:
                 continue
             o = float(v)
+            if ld == 1:      # day-1 hourly obs for the site-history series
+                slot = int((t - t0).total_seconds() // 3600)
+                if 0 <= slot < 24:
+                    e = ser.setdefault(sid, {}).setdefault(
+                        sp, {"o": [None] * 24, "f": [None] * 24})
+                    e["o"][slot] = round(o, 1)
             k = (sid, sp, ld)
             a = rec.setdefault(k, [0, 0.0, 0.0, 0.0, 0.0, 0.0])
             b = lh.setdefault((sp, hidx), [0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -208,6 +215,24 @@ def verify_day(day, key):
                 acc[0] += 1; acc[1] += o; acc[2] += f
                 acc[3] += o * o; acc[4] += f * f; acc[5] += o * f
             n_pairs += 1
+
+    # day-1 model series: fill independently of obs gaps so the stitched
+    # history line stays continuous (only for sites that reported anything)
+    if 1 in cycles:
+        cyc1 = cycles[1]
+        hours_utc = [(t0 + timedelta(hours=k)).astimezone(timezone.utc)
+                     .strftime("%Y-%m-%dT%H:00") for k in range(24)]
+        for sid, s in sites.items():
+            for sp in ("pm", "o3"):
+                e = ser.setdefault(sid, {}).setdefault(
+                    sp, {"o": [None] * 24, "f": [None] * 24})
+                for slot, hu in enumerate(hours_utc):
+                    hidx = cyc1["hours"].get(hu)
+                    if hidx is None:
+                        continue
+                    f = cyc1["value"](sp, hidx, s["lon"], s["lat"])
+                    if f is not None:
+                        e["f"][slot] = round(f, 1)
 
     # MDA8 ozone: one pair per site per lead day (regulatory daily metric)
     date_iso, n_m8 = day.isoformat(), 0
@@ -234,16 +259,19 @@ def verify_day(day, key):
                 for (sid, sp, ld), a in sorted(rec.items())],
         "lh": [[sp, h] + [a[0]] + [rnd(x) for x in a[1:]]
                for (sp, h), a in sorted(lh.items())],
+        "ser": ser,
     }
 
 
 def rebuild_summary(vdir, window):
     hist = sorted((vdir / "history").glob("[0-9]" * 8 + ".json"))[-window:]
-    sites, days = {}, []
+    sites, days, ser_days = {}, [], []
     for p in hist:
         d = json.loads(p.read_text())
         sites.update(d["sites"])
         days.append({"date": d["date"], "rec": d["rec"], "lh": d["lh"]})
+        if d.get("ser"):  # kept OUT of summary.json (too big); series writer only
+            ser_days.append({"date": d["date"], "ser": d["ser"]})
     now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
     out = {"updated": now_iso, "window_days": window, "sites": sites, "days": days}
     (vdir / "summary.json").write_text(json.dumps(out, separators=(",", ":")))
@@ -286,6 +314,50 @@ def rebuild_summary(vdir, window):
          "sites": dsites}, separators=(",", ":")))
     print(f"sites.json: skill digest for {len(dsites)} sites, "
           f"{(vdir / 'sites.json').stat().st_size / 1e3:.0f} KB")
+
+    # per-site FULL-HISTORY day-1 series for the viewer's site-history panel:
+    # verification/series/<sid>.json, hourly obs + day-1 model, hour k =
+    # start-day local midnight + k hours (missing days stay null).
+    write_site_series(vdir, ser_days, sites)
+
+
+def write_site_series(vdir, days, sites_meta):
+    from datetime import date as _date
+    sdays = [d for d in days if d.get("ser")]
+    if not sdays:
+        return
+    d0 = _date.fromisoformat(f"{sdays[0]['date'][:4]}-{sdays[0]['date'][4:6]}-{sdays[0]['date'][6:]}")
+    d1 = _date.fromisoformat(f"{sdays[-1]['date'][:4]}-{sdays[-1]['date'][4:6]}-{sdays[-1]['date'][6:]}")
+    nh = ((d1 - d0).days + 1) * 24
+    per = {}
+    for d in sdays:
+        dd = _date.fromisoformat(f"{d['date'][:4]}-{d['date'][4:6]}-{d['date'][6:]}")
+        off = (dd - d0).days * 24
+        for sid, sps in d["ser"].items():
+            rec = per.setdefault(sid, {})
+            for sp, e in sps.items():
+                a = rec.setdefault(sp, {"o": [None] * nh, "f": [None] * nh})
+                a["o"][off:off + 24] = e["o"]
+                a["f"][off:off + 24] = e["f"]
+    sdir = vdir / "series"
+    sdir.mkdir(exist_ok=True)
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    n_files = 0
+    for sid, rec in per.items():
+        # drop species with no data at all
+        rec = {sp: a for sp, a in rec.items()
+               if any(v is not None for v in a["o"]) or any(v is not None for v in a["f"])}
+        if not rec:
+            continue
+        meta = sites_meta.get(sid, {})
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(sid))
+        (sdir / f"{safe}.json").write_text(json.dumps(
+            {"updated": now_iso, "start": d0.isoformat(), "hours": nh,
+             "tz": "America/Los_Angeles", "name": meta.get("name", sid),
+             "lon": meta.get("lon"), "lat": meta.get("lat"), **rec},
+            separators=(",", ":")))
+        n_files += 1
+    print(f"series/: {n_files} site files, {len(sdays)} day(s), {nh} hourly slots each")
 
 
 def main():

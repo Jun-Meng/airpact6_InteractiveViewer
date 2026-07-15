@@ -120,6 +120,10 @@ if [ -f "$STAGE_ROOT/verification/summary.json" ]; then
   mkdir -p "$SITE/data/verification"
   cp "$STAGE_ROOT/verification/summary.json" "$SITE/data/verification/"
   [ -f "$STAGE_ROOT/verification/sites.json" ] && cp "$STAGE_ROOT/verification/sites.json" "$SITE/data/verification/"
+  if [ -d "$STAGE_ROOT/verification/series" ]; then
+    mkdir -p "$SITE/data/verification/series"
+    cp "$STAGE_ROOT/verification/series/"*.json "$SITE/data/verification/series/" 2>/dev/null || true
+  fi
 fi
 
 # Pages Functions (AirNow obs proxy -> /api/obs). Needs the AIRNOW_API_KEY
@@ -151,6 +155,8 @@ cat > "$SITE/_headers" <<HDR
   Cache-Control: no-cache
 /data/verification/sites.json
   Cache-Control: no-cache
+/data/verification/series/*
+  Cache-Control: public, max-age=3600
 HDR
 
 echo "  site assembled: $(du -sh "$SITE" | cut -f1)"

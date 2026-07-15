@@ -284,6 +284,36 @@
   #miniHr { color: var(--accent); font-weight: 700; }
   .spark-pin { font-size: 10px; color: var(--accent); cursor: pointer; white-space: nowrap; }
   .spark-pin:hover { text-decoration: underline; }
+  /* ---- site history (task #38) ---- */
+  .hist-chip { border: 1px solid rgba(91,155,236,.55); color: #5b9bec; border-radius: 5px;
+    padding: 0 7px; font-size: 10px; cursor: pointer; white-space: nowrap; font-weight: 400; }
+  .hist-chip:hover { background: rgba(91,155,236,.14); }
+  #histWrap { position: absolute; inset: 0; z-index: 60; background: rgba(5,8,11,.55);
+    display: flex; align-items: center; justify-content: center; }
+  .hist-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; width: min(680px, calc(100% - 16px)); max-height: calc(100% - 20px);
+    overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.5); color: var(--ink); font-size: 12px; }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hist-sub { font-size: 11px; color: var(--ink-mute); }
+  .hist-ctl { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .hist-btn { border: 1px solid var(--line); border-radius: 5px; padding: 1px 8px; font-size: 10px;
+    color: var(--ink-mute); cursor: pointer; white-space: nowrap; user-select: none; }
+  .hist-btn:hover { border-color: var(--ink-faint); }
+  .hist-btn.on { border-color: #5b9bec; color: #5b9bec; }
+  .hist-x { color: var(--ink-mute); font-size: 16px; cursor: pointer; margin-left: 6px; padding: 0 4px; }
+  .hist-x:hover { color: var(--ink); }
+  .hist-pop { background: rgba(91,155,236,.07); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; margin-top: 8px; font-size: 11px; }
+  .hist-pop input[type=date] { background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 5px; font: inherit; padding: 2px 5px; }
+  .hist-note { font-size: 10px; color: var(--ink-faint); margin-top: 6px; }
+  .hist-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 10px; }
+  .hist-leg { cursor: pointer; user-select: none; }
+  .hist-leg.off { opacity: .4; }
+  .hist-read { font-size: 11px; color: var(--ink-mute); margin: 4px 0 2px; min-height: 15px; }
+  .hist-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--ink-mute); }
+  .hist-load { text-align: center; color: var(--ink-mute); font-size: 11px; padding: 18px 0; }
   .pin-card {
     position: absolute; z-index: 6; width: 336px; max-width: calc(100% - 16px);
     background: rgba(14,19,24,.93); backdrop-filter: blur(6px);
@@ -1257,6 +1287,288 @@ function attachSkill(elId,siteId,sp){
   }).catch(()=>{});
 }
 
+/* ---------- site history panel (task #38): obs vs stitched day-1 forecasts ---------- */
+let HIST_STATE=null, HIST_ESC=null;
+const HIST_CACHE={};
+function ptMidnightMs(dateStr){ // ms of local (PT) midnight for YYYY-MM-DD, DST-safe
+  for(const off of ['-07:00','-08:00']){
+    const t=new Date(dateStr+'T00:00:00'+off);
+    if(t.toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:'America/Los_Angeles'}).slice(0,2)==='00')return t.getTime();
+  }
+  return new Date(dateStr+'T00:00:00-07:00').getTime();
+}
+function avg24(arr){ // trailing 24-h mean, >=18 of 24 valid (the 75% rule)
+  const out=new Array(arr.length).fill(null);
+  let sum=0,cnt=0;
+  for(let i=0;i<arr.length;i++){
+    const add=arr[i]; if(add!=null){sum+=add;cnt++;}
+    if(i>=24){const dr=arr[i-24]; if(dr!=null){sum-=dr;cnt--;}}
+    if(i>=23&&cnt>=18)out[i]=sum/cnt;
+  }
+  return out;
+}
+function closeHistory(){
+  const w=document.getElementById('histWrap'); if(w)w.remove();
+  if(HIST_ESC){document.removeEventListener('keydown',HIST_ESC);HIST_ESC=null;}
+  HIST_STATE=null;
+}
+function openHistory(site){
+  closeHistory();
+  if(!site.id)return;
+  const safe=String(site.id).replace(/[^A-Za-z0-9_.-]/g,'_');
+  const wrap=document.getElementById('map-wrap');
+  const bg=document.createElement('div'); bg.id='histWrap';
+  bg.innerHTML=
+   `<div class="hist-panel">
+      <div class="hist-head">
+        <div><span style="font-size:14px;font-weight:600">${esc(site.name)}</span>
+          <span class="hist-sub" id="histSub"></span></div>
+        <div class="hist-ctl">
+          <span class="hist-btn" data-sp="pm">PM2.5</span><span class="hist-btn" data-sp="o3">Ozone</span>
+          <span style="width:8px"></span>
+          <span class="hist-btn" data-r="7">7d</span><span class="hist-btn" data-r="14">14d</span>
+          <span class="hist-btn" data-r="30">30d</span><span class="hist-btn" data-r="c">custom &#9662;</span>
+          <span class="hist-x" id="histX" title="close (Esc)">&times;</span>
+        </div>
+      </div>
+      <div class="hist-pop" id="histPop" style="display:none">
+        from <input type="date" id="histFrom"> to <input type="date" id="histTo">
+        <span class="hist-btn on" id="histApply">apply</span>
+        <span id="histMonths" style="margin-left:8px"></span>
+        <div class="hist-note" id="histNote"></div>
+      </div>
+      <div class="hist-legend" id="histLegend"></div>
+      <div class="hist-read" id="histRead">&nbsp;</div>
+      <svg id="histSvg" viewBox="0 0 640 230" style="display:block;width:100%;cursor:crosshair;touch-action:none"></svg>
+      <div class="hist-foot"><span id="histStats"></span><span class="spark-pin" id="histCsv">&#8595; CSV</span></div>
+      <div class="hist-load" id="histLoad">loading site history&hellip;</div>
+    </div>`;
+  wrap.appendChild(bg);
+  bg.addEventListener('click',e=>{if(e.target===bg)closeHistory();});
+  document.getElementById('histX').onclick=closeHistory;
+  HIST_ESC=e=>{if(e.key==='Escape')closeHistory();};
+  document.addEventListener('keydown',HIST_ESC);
+  const st={site,sp:(view==='daily'?(dailyPol==='o3'?'o3':'pm'):species),
+            preset:14,from:null,to:null,
+            show:{mh:true,ma:true,oh:true,oa:true},d:null};
+  HIST_STATE=st;
+  bg.querySelectorAll('.hist-btn[data-sp]').forEach(b=>b.onclick=()=>{st.sp=b.dataset.sp;histRender();});
+  bg.querySelectorAll('.hist-btn[data-r]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.r==='c'){const p=document.getElementById('histPop');
+      p.style.display=p.style.display==='none'?'':'none';st.preset='c';histMark();return;}
+    st.preset=+b.dataset.r; st.from=st.to=null;
+    document.getElementById('histPop').style.display='none'; histRender();});
+  document.getElementById('histApply').onclick=()=>{
+    const f=document.getElementById('histFrom').value,t=document.getElementById('histTo').value;
+    if(!f||!t||f>t)return;
+    st.from=f;st.to=t;st.preset='c';histRender();};
+  document.getElementById('histCsv').onclick=histCsv;
+  const p=(HIST_CACHE[safe]||(HIST_CACHE[safe]=
+    fetch('data/verification/series/'+safe+'.json').then(r=>{if(!r.ok)throw 0;return r.json();})));
+  p.then(d=>{
+    if(!HIST_STATE||HIST_STATE!==st)return;
+    st.d=histPrep(d,site);
+    document.getElementById('histLoad').style.display='none';
+    histRender();
+    fetchObsSeries().then(os=>{ // today's obs (not yet in the nightly file)
+      if(!HIST_STATE||HIST_STATE!==st)return;
+      let sr=os.sites[site.id];
+      if(!sr){const eps=1e-4;
+        for(const k in os.sites){const c=os.sites[k];
+          if(Math.abs(c.lon-site.lon)<eps&&Math.abs(c.lat-site.lat)<eps){sr=c;break;}}}
+      if(!sr)return;
+      let added=false;
+      for(const sp of ['pm','o3']){
+        const a=sr[sp]; if(!a)continue;
+        const S=st.d.ser[sp]; if(!S)continue;
+        for(let h=0;h<a.length&&h<DATA.nHours;h++){
+          if(a[h]==null)continue;
+          const idx=Math.round((DATA.epoch(h)-st.d.startMs)/3600e3);
+          if(idx>=st.d.histEnd&&idx<S.o.length&&S.o[idx]==null){S.o[idx]=a[h];added=true;}
+        }
+      }
+      if(added)histRender();
+    }).catch(()=>{});
+  }).catch(()=>{
+    delete HIST_CACHE[safe];
+    const l=document.getElementById('histLoad');
+    if(l)l.textContent='history is not available for this site yet';
+  });
+}
+function histPrep(d,site){
+  const startMs=ptMidnightMs(d.start), histEnd=d.hours;
+  const ser={};
+  for(const sp of ['pm','o3']){
+    const src=d[sp]; if(!src&&!DATA)continue;
+    const o=src?src.o.slice():new Array(histEnd).fill(null);
+    const f=src?src.f.slice():new Array(histEnd).fill(null);
+    // extend with the CURRENT cycle (today + the 2 forecast days); archived
+    // cycles fall inside the series range and are skipped by the idx guard
+    let maxIdx=histEnd-1;
+    for(let h=0;h<DATA.nHours;h++){
+      const idx=Math.round((DATA.epoch(h)-startMs)/3600e3);
+      if(idx<histEnd)continue;
+      maxIdx=Math.max(maxIdx,idx);
+      while(f.length<=idx){f.push(null);o.push(null);}
+      const c=DATA.valueAt(sp,h,site.lon,site.lat);
+      if(isFinite(c))f[idx]=c;
+    }
+    ser[sp]={o,f,oa:null,fa:null};
+  }
+  return {startMs,histEnd,ser,start:d.start};
+}
+function histMark(){
+  const st=HIST_STATE; if(!st)return;
+  document.querySelectorAll('#histWrap .hist-btn[data-sp]').forEach(b=>
+    b.classList.toggle('on',b.dataset.sp===st.sp));
+  document.querySelectorAll('#histWrap .hist-btn[data-r]').forEach(b=>
+    b.classList.toggle('on',String(st.preset)===(b.dataset.r==='c'?'c':b.dataset.r)));
+}
+function histRender(){
+  const st=HIST_STATE; if(!st||!st.d)return;
+  histMark();
+  const sp=st.sp, S=st.d.ser[sp], unit=sp==='pm'?'µg/m³':'ppb', pd=sp==='pm'?1:0;
+  const sub=document.getElementById('histSub');
+  sub.textContent=` · ${sp==='pm'?'PM2.5':'ozone'} · observed vs day-1 forecasts`;
+  const svg=document.getElementById('histSvg');
+  if(!S||(!S.o.some(v=>v!=null)&&!S.f.some(v=>v!=null))){
+    svg.innerHTML='';document.getElementById('histStats').textContent='no data for this pollutant here';
+    document.getElementById('histLegend').innerHTML='';return;
+  }
+  if(!S.oa){S.oa=avg24(S.o);S.fa=avg24(S.f);}
+  const N=S.f.length, nowIdx=Math.floor((Date.now()-st.d.startMs)/3600e3);
+  // window
+  let i0,i1;
+  if(st.preset==='c'&&st.from){
+    i0=Math.max(0,Math.round((ptMidnightMs(st.from)-st.d.startMs)/3600e3));
+    i1=Math.min(N,Math.round((ptMidnightMs(st.to)-st.d.startMs)/3600e3)+24);
+  }else{
+    const days=(st.preset==='c'?14:st.preset);
+    i1=N; i0=Math.max(0,Math.min(nowIdx,N)-days*24);
+  }
+  if(i1-i0<24){i1=Math.min(N,i0+24);}
+  // custom popover bounds + month shortcuts (once per render, cheap)
+  const endDay=new Date(st.d.startMs+(st.d.histEnd-1)*3600e3);
+  const fmtD=t=>new Date(t).toLocaleDateString('sv-SE',{timeZone:'America/Los_Angeles'});
+  const fEl=document.getElementById('histFrom'),tEl=document.getElementById('histTo');
+  fEl.min=tEl.min=st.d.start; fEl.max=tEl.max=fmtD(endDay.getTime());
+  if(!fEl.value){fEl.value=st.d.start;tEl.value=fEl.max;}
+  document.getElementById('histNote').textContent=
+    `records begin ${st.d.start} (first verified cycle)`;
+  const mEl=document.getElementById('histMonths');
+  if(!mEl.dataset.done){
+    mEl.dataset.done='1'; let h='';
+    const m0=st.d.start.slice(0,7), m1=fmtD(Date.now()).slice(0,7);
+    for(let m=m0;m<=m1;){
+      const [y,mo]=m.split('-').map(Number);
+      h+=`<span class="hist-btn" data-m="${m}">${new Date(Date.UTC(y,mo-1,15)).toLocaleDateString('en-US',{month:'short'})}</span> `;
+      m=(mo===12?`${y+1}-01`:`${y}-${String(mo+1).padStart(2,'0')}`);
+    }
+    mEl.innerHTML='quick: '+h;
+    mEl.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{
+      const m=b.dataset.m,[y,mo]=m.split('-').map(Number);
+      const last=new Date(Date.UTC(y,mo,0)).getUTCDate();
+      fEl.value=`${m}-01`<st.d.start?st.d.start:`${m}-01`;
+      tEl.value=`${m}-${String(last).padStart(2,'0')}`>fEl.max?fEl.max:`${m}-${String(last).padStart(2,'0')}`;
+      document.getElementById('histApply').click();});
+  }
+  // geometry + scales
+  const W=640,H=230,X0=40,X1=632,Y0=205,Y1=22;
+  const bp=sp==='pm'?PM_BP:O3_BP;
+  let vmax=1;
+  for(let i=i0;i<i1;i++)for(const a of [S.o,S.f])if(a[i]!=null)vmax=Math.max(vmax,a[i]);
+  const ymax=Math.max(vmax*1.15,bp[1][1]*1.05);
+  const x=i=>X0+(X1-X0)*(i-i0)/Math.max(1,i1-1-i0), y=c=>Y0-(Y0-Y1)*Math.min(c,ymax)/ymax;
+  let g='';
+  for(let k=0;k<bp.length&&bp[k][0]<ymax;k++){
+    const hi=Math.min(bp[k][1],ymax);
+    g+=`<rect x="${X0}" y="${y(hi).toFixed(1)}" width="${X1-X0}" height="${Math.max(0,y(k?bp[k][0]:0)-y(hi)).toFixed(1)}" fill="${rgb(CATS[Math.min(k,5)].col)}" opacity="0.14"/>`;
+  }
+  {const steps=[1,2,5,10,20,25,50,100,200,500];
+   const step=steps.find(s=>ymax/s<=5)||500;
+   g+=`<text x="${X0-4}" y="${Y0+3}" font-size="9" fill="#8a949c" text-anchor="end">0</text>`;
+   for(let v=step;v<=ymax*0.98;v+=step)
+     g+=`<line x1="${X0}" y1="${y(v).toFixed(1)}" x2="${X1}" y2="${y(v).toFixed(1)}" stroke="var(--ink-faint)" stroke-width="0.5" opacity="0.4"/>`
+       +`<text x="${X0-4}" y="${(y(v)+3).toFixed(1)}" font-size="9" fill="#8a949c" text-anchor="end">${v}</text>`;}
+  const spanDays=Math.ceil((i1-i0)/24), lstep=Math.max(1,Math.ceil(spanDays/8));
+  for(let i=Math.ceil(i0/24)*24,di=0;i<i1;i+=24,di++){
+    g+=`<line x1="${x(i).toFixed(1)}" y1="${Y1}" x2="${x(i).toFixed(1)}" y2="${Y0}" stroke="var(--ink-faint)" stroke-width="0.4" opacity="0.5"/>`;
+    if(di%lstep===0){const ti=ptTimeInfo(new Date(st.d.startMs+i*3600e3));
+      g+=`<text x="${(x(i)+2).toFixed(1)}" y="${Y0+14}" font-size="8" fill="#5f6b76">${esc(ti.date.slice(4))}</text>`;}
+  }
+  // curves: [key, arr, color, width, opacity]
+  const CUR=[['oh',S.o,'#5b9bec',1,0.42],['mh',S.f,'var(--ink)',1,0.42],
+             ['oa',S.oa,'#5b9bec',2.4,1],['ma',S.fa,'var(--ink)',2.4,1]];
+  const seg=(arr,a,b,dash,col,w,op)=>{
+    let out='',s=[];
+    const fl=()=>{if(s.length>1)out+=`<polyline fill="none" stroke="${col}" stroke-width="${w}" opacity="${op}"${dash?' stroke-dasharray="4 3"':''} stroke-linejoin="round" points="${s.join(' ')}"/>`;s=[];};
+    for(let i=Math.max(a,i0);i<Math.min(b,i1);i++){
+      if(arr[i]!=null)s.push(`${x(i).toFixed(1)},${y(arr[i]).toFixed(1)}`); else fl();
+    } fl(); return out;
+  };
+  for(const [k,arr,col,w,op] of CUR){
+    if(!st.show[k])continue;
+    const isModel=(k==='mh'||k==='ma');
+    g+=seg(arr,i0,isModel?Math.min(nowIdx+1,i1):i1,false,col,w,op);
+    if(isModel&&nowIdx<i1)g+=seg(arr,Math.max(nowIdx,i0),i1,true,col,w,op);
+  }
+  if(nowIdx>=i0&&nowIdx<i1)
+    g+=`<line x1="${x(nowIdx).toFixed(1)}" y1="${Y1}" x2="${x(nowIdx).toFixed(1)}" y2="${Y0}" stroke="var(--ink-mute)" stroke-width="0.8" stroke-dasharray="2 3"/>
+        <text x="${(x(nowIdx)+3).toFixed(1)}" y="${Y1+9}" font-size="9" fill="var(--ink-mute)">now</text>`;
+  g+=`<line id="histCur" x1="-9" y1="${Y1}" x2="-9" y2="${Y0}" stroke="#5b9bec" stroke-width="1"/>`;
+  svg.innerHTML=g;
+  // legend toggles
+  const LEG=[['mh','model hourly','var(--ink)',1],['ma','model 24-h avg','var(--ink)',2.4],
+             ['oh','obs hourly','#5b9bec',1],['oa','obs 24-h avg','#5b9bec',2.4]];
+  document.getElementById('histLegend').innerHTML=LEG.map(([k,lbl,col,w])=>
+    `<span class="hist-leg${st.show[k]?'':' off'}" data-k="${k}">
+       <span style="display:inline-block;width:16px;border-top:${w}px solid ${col};vertical-align:3px;${w<2?'opacity:.5':''}"></span>
+       ${lbl} ${st.show[k]?'&#9745;':'&#9744;'}</span>`).join('');
+  document.querySelectorAll('#histLegend .hist-leg').forEach(el=>
+    el.onclick=()=>{st.show[el.dataset.k]=!st.show[el.dataset.k];histRender();});
+  // window stats on hourly pairs (past only)
+  let n=0,so=0,sf=0,soo=0,sff=0,sof=0;
+  for(let i=i0;i<Math.min(i1,nowIdx+1);i++){
+    const o=S.o[i],f=S.f[i];
+    if(o==null||f==null)continue;
+    n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
+  }
+  const stats=document.getElementById('histStats');
+  if(n>=24){
+    const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
+    const cov=sof/n-(so/n)*(sf/n),
+          sdo=Math.sqrt(Math.max(1e-9,soo/n-(so/n)**2)), sdf=Math.sqrt(Math.max(1e-9,sff/n-(sf/n)**2));
+    stats.innerHTML=`this window: bias <b style="color:#5b9bec">${bias>=0?'+':''}${bias.toFixed(1)}</b> · RMSE <b style="color:#5b9bec">${rmse.toFixed(1)}</b> ${unit} · r <b style="color:#5b9bec">${(cov/(sdo*sdf)).toFixed(2)}</b> · ${n.toLocaleString()} pairs`;
+  }else stats.textContent='too few paired hours in this window for statistics';
+  // hover readout
+  st.i0=i0;st.i1=i1;st.X0=X0;st.X1=X1;st.W=W;
+  svg.onpointermove=e=>{
+    const r=svg.getBoundingClientRect();
+    const i=Math.round(i0+((e.clientX-r.left)/r.width*W-X0)/(X1-X0)*(i1-1-i0));
+    if(i<i0||i>=i1)return;
+    const cur=document.getElementById('histCur');
+    if(cur){cur.setAttribute('x1',x(i));cur.setAttribute('x2',x(i));}
+    const ti=ptTimeInfo(new Date(st.d.startMs+i*3600e3));
+    const v=a=>a[i]!=null?a[i].toFixed(pd):'–';
+    document.getElementById('histRead').textContent=
+      `${ti.date} · ${ti.time12} ${ti.tz} — AIRPACT6 ${v(S.f)} · AIRNOW ${v(S.o)} ${unit} (24-h: ${v(S.fa)} · ${v(S.oa)})`;
+  };
+}
+function histCsv(){
+  const st=HIST_STATE; if(!st||!st.d)return;
+  const S=st.d.ser[st.sp]; if(!S)return;
+  const rows=['time_pt,time_utc,forecast_hourly,obs_hourly,forecast_24h_avg,obs_24h_avg'];
+  const v=x=>x==null?'':(+x).toFixed(2);
+  for(let i=st.i0;i<st.i1;i++){
+    const t=new Date(st.d.startMs+i*3600e3);
+    rows.push(`${t.toLocaleString('sv-SE',{timeZone:'America/Los_Angeles'}).replace(' ','T')},${t.toISOString().slice(0,16)}Z,${v(S.f[i])},${v(S.o[i])},${v(S.fa&&S.fa[i])},${v(S.oa&&S.oa[i])}`);
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
+  a.download=`${String(st.site.id).replace(/[^A-Za-z0-9_.-]/g,'_')}_${st.sp}_history.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
 /* ---------- daily view: monitor popup comparing model vs observed day values ---------- */
 function obsDayMeanK(arr,k){ // 24-h mean of day k with hour count
   if(!arr)return null;
@@ -1295,8 +1607,8 @@ function siteClickDaily(s){
   const isA=dailyPol==='all', pd=dailyPol==='pm'?1:0;
   const unit=dailyPol==='pm'?'µg/m³':dailyPol==='o3'?'ppb':'AQI';
   const metric=dailyPol==='pm'?'PM2.5 24-h mean':dailyPol==='o3'?'Ozone MDA8':'overall daily AQI';
-  new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)} · <span id="dch_${K}"></span> · ${metric}</p>
+  const dpopup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
+    `<p class="pop-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${esc(s.name)} · <span id="dch_${K}"></span> · ${metric}</span>${s.id?`<span class="hist-chip" id="hcd_${K}">site history &rarr;</span>`:''}</p>
      <div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
        <div class="pop-v"><span id="dcm_${K}">–</span> <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRPACT6</span></div>
        <div class="pop-v" style="color:#5b9bec"><span id="dco_${K}">–</span> <span style="font-size:11px;color:var(--ink-mute)">AIRNOW</span></div>
@@ -1311,6 +1623,8 @@ function siteClickDaily(s){
        <span style="font-size:10px;color:var(--ink-mute)"><span style="color:var(--ink)">&#9632;</span> AIRPACT6 &nbsp;<span style="color:#5b9bec">&#9632;</span> AirNow obs</span>
      </div>
      <div id="vbd_${K}" style="display:none"></div>`).addTo(map);
+  const hbd=document.getElementById('hcd_'+K);
+  if(hbd)hbd.onclick=()=>{dpopup.remove();openHistory(s);};
   attachSkill('vbd_'+K, s.id, dailyPol==='o3'?'m8':dailyPol==='pm'?'pm':null);
   const $=id=>document.getElementById(id+'_'+K);
   const model=days.map((d,k)=>modelDayStat(k,s.lon,s.lat));
@@ -1390,10 +1704,12 @@ function siteClick(s){
   }
   const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
+    `<p class="pop-t" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(s.name)}${s.id?`<span class="hist-chip" id="hc_${VB}">site history &rarr;</span>`:''}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
   if(sp)sp.wire(popup);
+  const hb=document.getElementById('hc_'+VB);
+  if(hb)hb.onclick=()=>{popup.remove();openHistory(s);};
   // skill badge goes into the spark's slot (right under the AIRNOW-latest
   // line) so the two observation facts sit together above the forecast
   attachSkill(sp?sp.slotId:VB,s.id,species);
