@@ -999,9 +999,15 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
   const html=
     latestLine+
     `<div id="spslot_${K}" style="display:none"></div>`+
-    `<div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">
-       <span><span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></span>
-       ${siteId!=null?`<span style="color:#5b9bec"><span style="font-size:11px">AIRNOW:</span> <span class="pop-v" id="spo_${K}">–</span> <span style="font-size:11px">${unit}</span></span>`:''}
+    `<div style="display:flex;gap:24px;flex-wrap:wrap">
+       <div>
+         <div><span style="font-size:11px;color:var(--ink-mute)">AIRPACT6:</span> <span class="pop-v" id="spv_${K}"></span> <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
+         <span class="pop-cat" id="spc_${K}" style="margin-top:3px"></span>
+       </div>
+       ${siteId!=null?`<div style="color:#5b9bec">
+         <div><span style="font-size:11px">AIRNOW:</span> <span class="pop-v" id="spo_${K}">–</span> <span style="font-size:11px">${unit}</span></div>
+         <span class="pop-cat" id="spco_${K}" style="margin-top:3px;display:none"></span>
+       </div>`:''}
      </div>
      <p class="pop-t" id="spw_${K}" style="margin:2px 0 4px"></p>
      <svg id="sps_${K}" viewBox="0 0 ${W} ${HH}" width="${W}" style="display:block;max-width:100%;cursor:crosshair">
@@ -1015,8 +1021,7 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
        <circle id="spd2_${K}" r="3.4" fill="none" stroke="#5b9bec" stroke-width="1.8" style="display:none"/>
      </svg>
      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:8px">
-       <span class="pop-cat" id="spc_${K}"></span>
-       ${(siteId==null&&obsPt)?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':''}
+       ${(siteId==null&&obsPt)?'<span style="font-size:10px;color:var(--ink-mute)">&#9679;&#65038; AirNow obs</span>':'<span></span>'}
        ${noPin?'':`<span class="spark-pin" id="pin_${K}" title="pin as a draggable card for side-by-side comparison">&#8853; pin</span>`}
      </div>`;
   const wire=(popup)=>{
@@ -1033,8 +1038,12 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
         +((siteId!=null&&ovals&&ov===null)?(future?' · no obs yet':' · no obs'):'');
       const chip=$('spc');
       if(isFinite(c)){const a=aqiOf(species,c),cat=CATS[catIndex(a)];
-        chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`AIRPACT6 · ${cat.name} · AQI ${a}`;}
+        chip.style.display='';chip.style.background=rgb(cat.col);chip.textContent=`${cat.name} · AQI ${a}`;}
       else chip.style.display='none';
+      const chipO=$('spco');
+      if(chipO){ if(ov!==null){const ao=aqiOf(species,ov),co=CATS[catIndex(ao)];
+          chipO.style.display='';chipO.style.background=rgb(co.col);chipO.textContent=`${co.name} · AQI ${ao}`;}
+        else chipO.style.display='none'; }
       $('spl').setAttribute('x1',x(h));$('spl').setAttribute('x2',x(h));
       const d=$('spd'); d.setAttribute('cx',x(h)); d.setAttribute('cy',isFinite(c)?y(c):Y0);
       const d2=$('spd2');
