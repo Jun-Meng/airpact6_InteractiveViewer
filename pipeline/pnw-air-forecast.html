@@ -702,21 +702,44 @@ async function loadCycleData(url){
   buildRealData(mf,arrs);
   return mf;
 }
-/* warn loudly if the "latest" cycle is old — a silent watcher/publish failure
-   must not present a stale forecast as current */
+/* warn if the "latest" cycle is not current — two tiers:
+   1) same-day delay (amber, dismissible per day): after 08:00 PT with no
+      cycle initialized today yet — yesterday's 72-h cycle still covers the
+      current hours, so the wording reassures rather than alarms
+   2) multi-day stale (red-orange, not dismissible): >STALE_HOURS old — a
+      silent watcher/publish failure must not present itself as current */
 const STALE_HOURS=36; // normal worst case ~31 h (evening view of that morning's cycle)
+const DELAY_ALERT_HOUR=8; // PT; cycles normally publish ~7:00 PT
 function checkStaleness(mf){
   try{
     const t0=mf.hours&&mf.hours[0]&&mf.hours[0].utc?new Date(mf.hours[0].utc)
       :new Date(+mf.cycle.slice(0,4),+mf.cycle.slice(4,6)-1,+mf.cycle.slice(6,8));
     const ageH=(Date.now()-t0.getTime())/3600e3;
-    if(!(ageH>STALE_HOURS))return;
-    const d=document.createElement('div');
-    d.style.cssText='position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:30;'+
-      'background:var(--usg,#c96a2b);color:#fff;font:600 12px/1.4 var(--mono,monospace);'+
-      'padding:7px 16px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.35);max-width:86%;text-align:center';
-    d.textContent=`⚠ This forecast is ${Math.floor(ageH/24)}+ days old (cycle ${mf.cycle}) — the daily update may have failed.`;
-    document.getElementById('map-wrap').appendChild(d);
+    const bar=(bg,html,dismissKey)=>{
+      const d=document.createElement('div');
+      d.style.cssText='position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:30;'+
+        'background:'+bg+';color:#fff;font:600 12px/1.4 var(--mono,monospace);'+
+        'padding:7px '+(dismissKey?'30px':'16px')+' 7px 16px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.35);max-width:86%;text-align:center';
+      d.innerHTML=html+(dismissKey?'<span style="position:absolute;right:9px;top:5px;font-weight:400;opacity:.85;cursor:pointer">&times;</span>':'');
+      if(dismissKey)d.lastElementChild.onclick=()=>{d.remove();try{localStorage.setItem(dismissKey,'1');}catch(e){}};
+      document.getElementById('map-wrap').appendChild(d);
+    };
+    if(ageH>STALE_HOURS){
+      bar('var(--usg,#c96a2b)',`⚠ This forecast is ${Math.floor(ageH/24)}+ days old (cycle ${mf.cycle}) — the daily update may have failed.`);
+      return;
+    }
+    // same-day delay: past 08:00 PT and the latest cycle wasn't initialized today
+    const PT='America/Los_Angeles', now=new Date();
+    const ptToday=now.toLocaleDateString('sv-SE',{timeZone:PT});
+    const ptHour=+now.toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:PT});
+    const cycDay=t0.toLocaleDateString('sv-SE',{timeZone:PT});
+    if(ptHour>=DELAY_ALERT_HOUR&&cycDay<ptToday){
+      const key='delayDismiss_'+ptToday;
+      try{if(localStorage.getItem(key))return;}catch(e){}
+      const lastTi=ptTimeInfo(new Date(t0.getTime()+(mf.hours.length-1)*3600e3));
+      const todayLbl=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:PT});
+      bar('#b98418',`⚠ Today's forecast (${todayLbl}) is delayed — showing yesterday's cycle, still valid through ${lastTi.date}.`,key);
+    }
   }catch(e){}
 }
 
