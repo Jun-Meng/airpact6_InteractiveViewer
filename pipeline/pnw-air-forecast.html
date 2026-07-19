@@ -774,7 +774,7 @@ async function switchCycle(cyc){
     if(monMarkers.length)loadObsSeriesForDots(); // re-key obs to the new cycle's window
     closeAllPins(); // pinned cards show the previous cycle's data — close for correctness
     fireAvailability(cyc===LATEST_CYCLE);
-    configScrub(); refresh();
+    configScrub(); refresh(); updateSmokeBadge();
     const badge=document.querySelector('.demo-badge');
     if(badge){ if(cyc===LATEST_CYCLE)badge.style.display='none';
       else{badge.style.display='';badge.textContent='Archived forecast · cycle '+cyc;
@@ -932,7 +932,7 @@ map.on('load', async ()=>{
   }
   buildMonitors(); buildCities(); buildLegend(); updateClock(); setScrubFill();
   HASH_CYCLE=applyHash(); refresh(); HASH_READY=true;
-  initArchive();
+  initArchive(); updateSmokeBadge();
   map.on('moveend',updateHash);
 
   /* hover readout: live value under the cursor (feature tooltips take precedence) */
@@ -2313,6 +2313,72 @@ function fireAvailability(ok){
       if(map.getLayer(id))map.setLayoutProperty(id,'visibility','none');});
   }
   buildOverlayPanel();
+}
+
+/* ---------- smoke-day indicator badge (queue #37) ----------
+   Forecast-driven so it works on archived cycles too: a day is flagged when
+   its 24-h mean PM2.5 reaches USG (35.5 µg/m³, AQI 101) over at least
+   SMOKE_DAY_CELLS grid cells (~320 km² of 4-km cells — filters one-cell
+   specks right on top of a fire). On the live cycle, today's HMS analysis
+   (Medium/Heavy only — Light is usually aloft) upgrades the wording from
+   "possible" to "observed". No smoke-level PM in the forecast -> no badge. */
+const SMOKE_DAY_PM=35.5, SMOKE_DAY_CELLS=20;
+function updateSmokeBadge(){
+  const old=document.getElementById('smokeBadge'); if(old)old.remove();
+  try{
+    if(!DATA||DATA.mode!=='real'||!DATA.daily)return;
+    const W=DATA.W,H=DATA.H,d=DATA.daily;
+    const flagged=[]; let worstV=0, worstDay=-1, worstCells=0;
+    for(let k=0;k<d.nDays;k++){
+      let cells=0, mx=0;
+      for(let j=0;j<H;j++)for(let i=0;i<W;i++){
+        const v=d.conc('pm',k,i,j);
+        if(v>=SMOKE_DAY_PM){cells++; if(v>mx)mx=v;}
+      }
+      if(cells>=SMOKE_DAY_CELLS){flagged.push(k); if(mx>worstV){worstV=mx;worstDay=k;worstCells=cells;}}
+    }
+    if(!flagged.length)return;
+    const wd=k=>String((d.days[k]||{}).label||'').split(' ')[0]||('day '+(k+1));
+    const run=flagged.length>1&&flagged[flagged.length-1]-flagged[0]===flagged.length-1;
+    const dayTxt=flagged.length===1?wd(flagged[0])
+      :run?`${wd(flagged[0])}–${wd(flagged[flagged.length-1])}`:flagged.map(wd).join(', ');
+    const ci=catIndex(aqiFrom(worstV,PM_BP)), col=rgb(CATS[ci].col);
+    const b=document.createElement('div');
+    b.id='smokeBadge';
+    b.style.cssText='position:absolute;top:88px;right:10px;z-index:5;display:flex;align-items:center;gap:7px;'+
+      'background:rgba(14,19,24,.85);backdrop-filter:blur(6px);border:1px solid var(--line);'+
+      'border-radius:20px;padding:6px 12px;font:11px var(--mono,monospace);color:var(--ink);'+
+      'cursor:pointer;max-width:calc(100% - 20px)';
+    b.innerHTML=`<span style="width:8px;height:8px;border-radius:50%;flex:0 0 8px;background:${col}"></span>`+
+      `<span id="smokeBadgeTxt">smoke day possible · ${esc(dayTxt)}</span>`;
+    b.title=`24-h mean PM2.5 reaches ${CATS[ci].name} (peak ${worstV.toFixed(0)} µg/m³; ≈${(worstCells*16).toLocaleString()} km² at USG or worse on the worst day). `+
+      'Elevated PM2.5 in the Northwest is most often wildfire smoke. Click for the daily PM2.5 map.';
+    b.setAttribute('role','button'); b.tabIndex=0;
+    const go=()=>{dayIdx=worstDay; selectLayer('pm-d');};
+    b.addEventListener('click',go);
+    b.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+    const wrap=document.getElementById('map-wrap');
+    wrap.appendChild(b);
+    if(window.matchMedia('(max-width:760px)').matches){
+      // narrow screens: the chip spans nearly the full width — drop below it (and the zoom control)
+      let y=96; const w=wrap.getBoundingClientRect();
+      [document.querySelector('.map-tag'),document.querySelector('.maplibregl-ctrl-top-right')].forEach(el=>{
+        if(el&&el.offsetParent!==null)y=Math.max(y,el.getBoundingClientRect().bottom-w.top+8);});
+      b.style.top=y+'px';
+    }
+    if(OBS_OK){ // live cycle: corroborate with today's HMS analysis
+      const fresh=SMOKE&&(Date.now()-SMOKE.t<15*60e3);
+      (fresh?Promise.resolve(SMOKE.data)
+        :fetch('api/overlay?name=smoke').then(r=>r.ok?r.json():null))
+      .then(gj=>{
+        if(!gj||gj.type!=='FeatureCollection')return;
+        SMOKE={t:Date.now(),data:gj}; // warms the overlay toggle's cache too
+        const dense=gj.features.some(f=>/Medium|Heavy/.test((f.properties||{}).Density||''));
+        const el=document.getElementById('smokeBadgeTxt');
+        if(dense&&el)el.textContent=`smoke over the region today · forecast ${dayTxt}`;
+      }).catch(()=>{});
+    }
+  }catch(e){console.warn('smoke badge failed',e);}
 }
 
 /* ---------- model grid overlay (warped display grid, generated client-side) ---------- */
