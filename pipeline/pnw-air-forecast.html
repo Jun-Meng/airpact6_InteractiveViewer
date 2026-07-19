@@ -786,7 +786,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false,basemap:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false,basemap:false,truecolor:false};
 try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 
 /* ---------- inject find-a-place ---------- */
@@ -803,7 +803,8 @@ secPollutant.insertAdjacentHTML('beforebegin',
 /* collapsible overlay groups (order + grouping teach the obs-vs-forecast split) */
 const OVL_GROUPS=[
   {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
-    ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)']]},
+    ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)'],
+    ['truecolor','Satellite true color (daily)']]},
   {id:'ref',name:'Reference layers',hint:'',open:false,items:[
     ['states','State lines'],['counties','County lines'],
     ['class1','Class I areas'],['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
@@ -2037,7 +2038,7 @@ function updateClock(){
   }
 }
 
-function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash();
+function refresh(){ render(); recolorMonitors(); buildLegend(); updateClock(); updateHash(); tcSync();
   if(view==='hourly')SPARK_SYNCS.forEach(f=>f(hour)); }
 
 /* ---------- view switching ---------- */
@@ -2120,11 +2121,78 @@ function bindToggles(){
       if(k==='grid')toggleGrid();
       if(k==='fires')toggleFires();
       if(k==='smoke')toggleSmoke();
+      if(k==='truecolor')toggleTruecolor();
       if(k==='basemap')setBasemap(show.basemap);
       buildOverlayPanel();});
   });
 }
 buildOverlayPanel();
+
+/* ---------- VIIRS true-color satellite imagery (NASA GIBS, one image/day) ----------
+   Sits ABOVE the basemap and BELOW the model raster — toggling it on
+   effectively swaps the basemap for imagery, so the existing model-opacity
+   slider is the "see the smoke through the forecast" control. The imagery
+   date follows the time slider's day, clamped to the newest available image
+   (today's VIIRS pass is typically published by mid-afternoon PT). */
+let TC_DATE=null;
+function tcAvailableToday(){ // heuristic: overpass ~13:30 PT + ~1.5 h processing
+  return +new Date().toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:'America/Los_Angeles'})>=15;
+}
+function tcWantedDate(){
+  const PT='America/Los_Angeles', fmt=t=>new Date(t).toLocaleDateString('sv-SE',{timeZone:PT});
+  let want;
+  try{
+    want=(view==='daily'&&DATA.daily)?DATA.daily.days[dayIdx].date:fmt(DATA.epoch(hour));
+  }catch(e){want=fmt(Date.now());}
+  const latest=tcAvailableToday()?fmt(Date.now()):fmt(Date.now()-86400e3);
+  return want>latest?latest:want;
+}
+function tcUrl(d){
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+}
+function tcChip(d){
+  let c=document.getElementById('tcChip');
+  if(!d){if(c)c.remove();return;}
+  if(!c){
+    c=document.createElement('div'); c.id='tcChip';
+    c.style.cssText='position:absolute;left:10px;bottom:30px;z-index:5;background:rgba(11,15,18,.75);'+
+      'color:var(--ink-mute);font:11px var(--mono,monospace);padding:2px 9px;border-radius:5px;pointer-events:none';
+    document.getElementById('map-wrap').appendChild(c);
+  }
+  c.textContent=`imagery: VIIRS true color · ${d} · NASA GIBS`;
+}
+function toggleTruecolor(){
+  if(!show.truecolor){
+    if(map.getLayer('truecolor'))map.removeLayer('truecolor');
+    if(map.getSource('truecolor'))map.removeSource('truecolor');
+    TC_DATE=null; tcChip(null); return;
+  }
+  TC_DATE=tcWantedDate();
+  map.addSource('truecolor',{type:'raster',tiles:[tcUrl(TC_DATE)],tileSize:256,maxzoom:9,
+    attribution:'Imagery: NASA EOSDIS GIBS'});
+  const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
+  map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
+    paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
+  tcChip(TC_DATE);
+}
+function tcSync(){ // called from refresh(): re-point tiles when the slider crosses a day
+  if(!show.truecolor||!map.getSource('truecolor'))return;
+  const d=tcWantedDate();
+  if(d===TC_DATE)return;
+  TC_DATE=d;
+  const src=map.getSource('truecolor');
+  if(src.setTiles)src.setTiles([tcUrl(d)]);
+  else{ // older MapLibre without setTiles: drop and re-add the layer pair
+    if(map.getLayer('truecolor'))map.removeLayer('truecolor');
+    if(map.getSource('truecolor'))map.removeSource('truecolor');
+    map.addSource('truecolor',{type:'raster',tiles:[tcUrl(d)],tileSize:256,maxzoom:9,
+      attribution:'Imagery: NASA EOSDIS GIBS'});
+    const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
+    map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
+      paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
+  }
+  tcChip(d);
+}
 
 /* ---------- HMS smoke plumes (today's analyst-drawn OBSERVATIONS; live cycle only) ---------- */
 let SMOKE=null; // {t, data}
