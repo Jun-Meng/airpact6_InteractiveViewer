@@ -1190,8 +1190,33 @@ function buildSpark(lng,lat,obs,siteId,title,noPin){
   return {html,wire,slotId:'spslot_'+K,K};
 }
 
+/* ---------- drag-to-pin: grabbing a popup's title converts it into a pin card ---------- */
+function enableDragToPin(popup,lng,lat,obs,siteId,title){
+  const el=popup.getElement&&popup.getElement(); if(!el)return;
+  const hd=el.querySelector('.pop-t'); if(!hd)return;
+  hd.style.cursor='grab'; hd.style.touchAction='none';
+  if(!hd.title)hd.title='drag to pin as a floating card';
+  let st=null;
+  hd.addEventListener('pointerdown',e=>{
+    if(e.target.closest('a,.hist-chip,.hist-btn,.spark-pin'))return;
+    st={x:e.clientX,y:e.clientY,id:e.pointerId};
+    try{hd.setPointerCapture(e.pointerId);}catch(err){}
+  });
+  hd.addEventListener('pointermove',e=>{
+    if(!st)return;
+    if(Math.abs(e.clientX-st.x)+Math.abs(e.clientY-st.y)>6){ // real drag, not a click
+      const pid=st.id; st=null;
+      popup.remove();
+      createPinCard(lng,lat,obs,siteId,title,undefined,{x:e.clientX,y:e.clientY,pid});
+    }
+  });
+  const end=()=>{st=null;};
+  hd.addEventListener('pointerup',end);
+  hd.addEventListener('pointercancel',end);
+}
+
 /* ---------- pinned comparison cards (draggable, screen-anchored) ---------- */
-function createPinCard(lng,lat,obs,siteId,title,spOv){
+function createPinCard(lng,lat,obs,siteId,title,spOv,grab){
   // pollutant toggle on a pinned card: rebuild the card for the other species
   // (obs dropped — it belongs to the original species; series refills it)
   if(spOv&&spOv!==species){const keep=species;species=spOv;
@@ -1223,6 +1248,14 @@ function createPinCard(lng,lat,obs,siteId,title,spOv){
   });
   hd.addEventListener('pointerup',()=>{drag=null;});
   hd.addEventListener('pointercancel',()=>{drag=null;});
+  if(grab){ // born from drag-to-pin: place under the cursor and keep dragging
+    const r=wrap.getBoundingClientRect();
+    card.style.left=Math.max(0,Math.min(grab.x-r.left-80,wrap.clientWidth-card.offsetWidth))+'px';
+    card.style.top=Math.max(0,Math.min(grab.y-r.top-14,wrap.clientHeight-44))+'px';
+    drag={dx:grab.x-card.offsetLeft,dy:grab.y-card.offsetTop};
+    card.style.zIndex=7;
+    try{hd.setPointerCapture(grab.pid);}catch(e){} // if the browser refuses, user just re-grabs
+  }
   const closeCard=()=>{SPARK_SYNCS.delete(show);marker.remove();card.remove();PIN_CARDS.delete(closeCard);};
   card.querySelector('.pin-x').addEventListener('click',closeCard);
   // pollutant toggle + skill line, matching the monitor popup
@@ -1274,6 +1307,7 @@ function queryPoint(lng,lat){
        `<div class="pop-v">${c.toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit}</span></div>
         <span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name} · AQI ${aqi}</span>`}`).addTo(map);
     if(sp)sp.wire(popup);
+    if(sp)enableDragToPin(popup,lng,lat,null,undefined,`${lat.toFixed(2)}, ${lng.toFixed(2)}`);
     const nmEl=document.getElementById(NMID);
     if(nmEl)nmEl.onclick=()=>{popup.remove();siteClick(nm);};
     updateReadingHourly({lng,lat,c,aqi,ci,unit,spn});
@@ -1808,6 +1842,7 @@ function siteClick(s,spOv){
     const p1=document.getElementById('ps1_'+sp.K), p2=document.getElementById('ps2_'+sp.K);
     if(p1&&species!=='pm')p1.onclick=()=>{popup.remove();siteClick(s,'pm');};
     if(p2&&species!=='o3')p2.onclick=()=>{popup.remove();siteClick(s,'o3');};
+    enableDragToPin(popup,s.lon,s.lat,o,s.id||`${s.lat},${s.lon}`,s.name);
   }
   // skill badge goes into the spark's slot (right under the AIRNOW-latest
   // line) so the two observation facts sit together above the forecast
