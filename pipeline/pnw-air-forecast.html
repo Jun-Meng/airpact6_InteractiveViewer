@@ -372,8 +372,25 @@
 
   /* ---------- responsive ---------- */
   #railHandle { display: none; }
+  /* desktop sidebar fold: slim always-visible handle between rail and map */
+  #railFold {
+    flex: 0 0 14px; width: 14px; background: var(--panel);
+    border-right: 1px solid var(--line); cursor: pointer; user-select: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: var(--ink-mute); font-size: 10px; transition: flex-basis .2s ease, width .2s ease;
+  }
+  #railFold:hover { color: var(--ink); background: var(--panel-hi, var(--panel)); }
+  #rfLabel { display: none; writing-mode: vertical-rl; font-size: 9px; letter-spacing: .14em;
+    text-transform: uppercase; }
+  @media (min-width: 761px) { /* fold applies on desktop only; mobile has its own drawer */
+    body.rail-folded #rail { width: 0; flex-basis: 0; border-right: 0; overflow: hidden; }
+    body.rail-folded #railFold { flex-basis: 26px; width: 26px; }
+    body.rail-folded #rfLabel { display: block; }
+    #rail { transition: width .2s ease, flex-basis .2s ease; }
+  }
   @media (max-width: 760px) {
     #app { flex-direction: column-reverse; }
+    #railFold { display: none; }
     #rail {
       width: 100%; flex: 0 0 auto; max-height: 46dvh; border-right: 0; border-top: 1px solid var(--line);
     }
@@ -454,6 +471,11 @@
 
   </aside>
 
+  <div id="railFold" title="collapse controls" role="button" aria-label="Collapse or expand the control panel">
+    <span id="rfArrow">&#9664;</span>
+    <span id="rfLabel">controls</span>
+  </div>
+
   <div id="map-wrap">
     <div id="map"></div>
     <div class="map-tag">
@@ -481,7 +503,7 @@
       <button class="play" id="playMini" aria-label="Play forecast">
         <svg id="playIconMini" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       </button>
-      <span><b id="miniSp">PM2.5</b> · <span id="miniTime">—</span> <span id="miniHr"></span></span>
+      <span><b id="miniSp">PM2.5</b> · <span id="miniDate" style="color:var(--ink-mute)"></span><span id="miniTime">—</span> <span id="miniHr"></span></span>
       <span style="color:var(--ink-faint);font-size:11px">&#9662;</span>
     </div>
     <div class="map-legend" id="mapLegend">
@@ -2021,6 +2043,7 @@ function updateClock(){
     document.getElementById('mtDate').textContent=t.date;
     document.getElementById('mtHr').textContent='FCST HR +'+String(hour).padStart(2,'0');
     document.getElementById('miniSp').textContent=species==='pm'?'PM2.5':'Ozone';
+    document.getElementById('miniDate').textContent=t.date+' · ';
     document.getElementById('miniTime').textContent=`${t.time} ${t.tz||''}`;
     document.getElementById('miniHr').textContent='+'+String(hour).padStart(2,'0');
   } else if(DATA.daily){
@@ -2033,6 +2056,7 @@ function updateClock(){
     document.getElementById('mtDate').textContent=`Day ${dayIdx+1} of ${DATA.daily.nDays}`;
     document.getElementById('mtHr').textContent='D'+(dayIdx+1);
     document.getElementById('miniSp').textContent=document.getElementById('tagSp').textContent;
+    document.getElementById('miniDate').textContent=''; // daily label already IS the date
     document.getElementById('miniTime').textContent=d.label;
     document.getElementById('miniHr').textContent='D'+(dayIdx+1);
   }
@@ -2442,6 +2466,20 @@ try{
   if(localStorage.getItem('hintSeen')==='1'){const h=document.getElementById('hint');if(h)h.style.display='none';}
   else setTimeout(hideHint,15000);
 }catch(e){setTimeout(hideHint,15000);}
+
+/* ---------- desktop: fold the sidebar to a thin rail ---------- */
+(function(){
+  const f=document.getElementById('railFold'); if(!f)return;
+  const set=open=>{
+    document.body.classList.toggle('rail-folded',!open);
+    document.getElementById('rfArrow').innerHTML=open?'&#9664;':'&#9654;';
+    f.title=open?'collapse controls':'expand controls';
+    try{localStorage.setItem('railOpenDesk',open?'1':'0');}catch(e){}
+    setTimeout(()=>{try{map.resize();}catch(e){}},230); // canvas refit after the width animates
+  };
+  f.addEventListener('click',()=>set(document.body.classList.contains('rail-folded')));
+  try{if(localStorage.getItem('railOpenDesk')==='0')set(false);}catch(e){}
+})();
 
 /* ---------- mobile: collapsible control drawer ---------- */
 (function(){
