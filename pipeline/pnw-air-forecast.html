@@ -2158,7 +2158,12 @@ buildOverlayPanel();
    slider is the "see the smoke through the forecast" control. The imagery
    date follows the time slider's day, clamped to the newest available image
    (today's VIIRS pass is typically published by mid-afternoon PT). */
-let TC_DATE=null;
+let TC_DATE=null, TC_PREV_OP=null;
+function tcSetOpacity(pct){ // drive the existing slider so UI + layer stay in sync
+  const sl=document.getElementById('opacity');
+  sl.value=pct;
+  sl.dispatchEvent(new Event('input'));
+}
 function tcAvailableToday(){ // heuristic: overpass ~13:30 PT + ~1.5 h processing
   return +new Date().toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:'America/Los_Angeles'})>=15;
 }
@@ -2189,8 +2194,14 @@ function toggleTruecolor(){
   if(!show.truecolor){
     if(map.getLayer('truecolor'))map.removeLayer('truecolor');
     if(map.getSource('truecolor'))map.removeSource('truecolor');
-    TC_DATE=null; tcChip(null); return;
+    TC_DATE=null; tcChip(null);
+    if(TC_PREV_OP!=null){tcSetOpacity(TC_PREV_OP);TC_PREV_OP=null;} // restore
+    return;
   }
+  // the forecast raster at default opacity buries the imagery — drop it to a
+  // see-through level automatically (user can still fine-tune; restored on off)
+  const sl=document.getElementById('opacity');
+  if(+sl.value>45){TC_PREV_OP=+sl.value;tcSetOpacity(35);}
   TC_DATE=tcWantedDate();
   map.addSource('truecolor',{type:'raster',tiles:[tcUrl(TC_DATE)],tileSize:256,maxzoom:9,
     attribution:'Imagery: NASA EOSDIS GIBS'});
