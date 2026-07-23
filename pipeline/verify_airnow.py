@@ -363,7 +363,7 @@ def write_site_series(vdir, days, sites_meta):
     write_hourly_day1(vdir, sdays, sites_meta)
 
 
-def write_hourly_day1(vdir, ser_days, sites_meta, n_days=14):
+def write_hourly_day1(vdir, ser_days, sites_meta, n_days=30):
     """verification/hourly-day1.json: flat (obs, fc) day-1 hourly pairs from
     the trailing n_days, with a per-pair state index — feeds the TRUE hourly
     scatter on verify.html (summary.json only has sufficient statistics)."""

@@ -159,7 +159,7 @@ function draw(){
   const echo=echoStr(F);
   $('fe1').innerHTML=echo;$('fe2').innerHTML=echo;$('fe4').innerHTML=echo;
   $('fe3').innerHTML=echoStr(F,F.sp!=='m8');
-  scatterMerged(F);
+  scatterMerged(F,S);
   if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);
     $('ldCap').textContent='Bias for the same day forecast 1, 2, and 3 days ahead.';}
   else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);
@@ -192,7 +192,7 @@ function kpiExplain(F,S,u,med,nSites){
 let SCMODE='h'; // 'h' = every hourly pair (day-1), 'd' = site-day means
 $('chipH').addEventListener('click',()=>{if($('chipH').classList.contains('off'))return;SCMODE='h';draw();});
 $('chipD').addEventListener('click',()=>{SCMODE='d';draw();});
-function scatterMerged(F){
+function scatterMerged(F,S){
   const u=UNITS[F.sp];
   const hAvail=!!(HRLY&&HRLY[F.sp]&&HRLY[F.sp].o.length&&F.sp!=='m8'&&(!F.ld||F.ld==='1'||F.ld===1));
   let mode=(SCMODE==='h'&&hAvail)?'h':'d';
@@ -212,14 +212,18 @@ function scatterMerged(F){
       const o=H.o[i],f=H.f[i];pts.push([o,f]);
       n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
     }
-    if(!n){SCMODE='d';return scatterMerged(F);}
-    $('su1').textContent=`(hour × site, day 1)`;
-    const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
-    st={n,bias:(sf-so)/n,rmse:Math.sqrt(Math.max(0,(sff-2*sof+soo)/n)),
-        r:den>0?(n*sof-so*sf)/den:NaN,nLbl:'hourly pairs'};
-    cap=`${n.toLocaleString()} hourly pairs over ${win} day(s)`
-      +(pts.length>3000?' (3,000 drawn)':'')+' · day-1 forecasts only.'
-      +(+$('fWin').value>nD?` <span class="warn" style="color:#b98418">⚠ hourly pairs are archived for ${nD} days — showing all of them.</span>`:'');
+    if(!n){SCMODE='d';return scatterMerged(F,S);}
+    $('su1').textContent=`(hour × site)`;
+    // STATS come from the full-filter sufficient-statistics archive (exact,
+    // identical to box 1 by construction). The DOTS are the day-1 pair
+    // sample; an amber line inside the block flags when that's narrower.
+    const sampleNarrower=(win<+$('fWin').value)||F.ld!=='1';
+    st={n:S.n,bias:S.bias,rmse:S.rmse,r:S.r,nLbl:'hourly pairs',
+        fltLbl:`filter: last ${$('fWin').value} d · ${F.ld?'day '+F.ld:'all leads'}`,
+        sample:sampleNarrower?`dots: day-1 sample, last ${win} d`:null};
+    cap=(sampleNarrower
+      ?`Statistics are exact for the full filter (same archive as box 1); the dot cloud illustrates with ${pts.length>3000?'3,000 of ':''}${n.toLocaleString()} day-1 pairs from the trailing ${win} day(s).`
+      :`${n.toLocaleString()} hourly pairs${pts.length>3000?' (3,000 drawn)':''} — statistics describe the dots exactly.`);
   }else{
     pts=F.recs.map(r=>[r.so/r.n,r.sf/r.n]);
     $('su1').textContent=`(site-day means)`;
@@ -258,13 +262,16 @@ function scatterMerged(F){
   pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="${rr}" fill="var(--blue)" opacity="${op}"/>`;});
   if(st){ // in-plot stats, top-left (backed so smoke-bust outliers can't hide them)
     const pd=F.sp==='pm'?2:1;
-    s+=`<rect x="${X0+4}" y="${Y1+4}" width="128" height="60" rx="4" fill="var(--card)" opacity="0.82"/>
-      <g font-size="10" fill="var(--ink-mute)">
-        <text x="${X0+10}" y="${Y1+17}">n = ${st.n.toLocaleString()} ${st.nLbl}</text>
-        <text x="${X0+10}" y="${Y1+30}">bias = ${st.bias>=0?'+':''}${st.bias.toFixed(pd)} ${u}</text>
-        <text x="${X0+10}" y="${Y1+43}">RMSE = ${st.rmse.toFixed(pd)} ${u}${st.ofMeans?' (of means)':''}</text>
-        <text x="${X0+10}" y="${Y1+56}">r = ${isFinite(st.r)?st.r.toFixed(2):'–'}</text>
-      </g>`;
+    const lines=[];
+    if(st.fltLbl)lines.push([st.fltLbl,'var(--blue)']);
+    lines.push([`n = ${st.n.toLocaleString()} ${st.nLbl}`]);
+    lines.push([`bias = ${st.bias>=0?'+':''}${st.bias.toFixed(pd)} ${u}`]);
+    lines.push([`RMSE = ${st.rmse.toFixed(pd)} ${u}${st.ofMeans?' (of means)':''}`]);
+    lines.push([`r = ${isFinite(st.r)?st.r.toFixed(2):'–'}`]);
+    if(st.sample)lines.push([st.sample,'#b98418','9']);
+    s+=`<rect x="${X0+4}" y="${Y1+4}" width="150" height="${8+lines.length*13}" rx="4" fill="var(--card)" opacity="0.85"/>
+      <g font-size="10">${lines.map((l,i)=>
+        `<text x="${X0+10}" y="${Y1+17+i*13}" fill="${l[1]||'var(--ink-mute)'}"${l[2]?` font-size="${l[2]}"`:''}>${l[0]}</text>`).join('')}</g>`;
   }
   s+=`<text x="${(X0+X1)/2}" y="258" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed (${u})</text>
     <text x="14" y="${(Y0+Y1)/2}" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 14 ${(Y0+Y1)/2})">forecast (${u})</text>`;
