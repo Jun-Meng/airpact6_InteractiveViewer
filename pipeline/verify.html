@@ -65,7 +65,7 @@ svg{display:block;width:100%}
     <p class="l" id="k2b" style="margin-top:2px"></p></div>
   <div class="kpi"><p class="l">Paired values</p><p class="v" id="k3">–</p></div>
 </div>
-<p class="cap" id="kpiCap"></p>
+<div class="card" id="kpiExp" style="margin-top:10px;padding:9px 14px;font-size:11px;color:var(--ink-mute);line-height:1.7"></div>
 
 <div class="sechd"><span class="sect">2 · Does it track observations?</span><span class="echo" id="fe2"></span></div>
 <div class="card">
@@ -75,7 +75,7 @@ svg{display:block;width:100%}
       <span class="chip" id="chipH">every hour</span><span class="chip" id="chipD" style="margin-left:4px">daily averages by site</span>
     </span>
   </div>
-  <svg id="sc" viewBox="0 0 320 240" style="max-width:460px;margin:6px auto 0"></svg>
+  <svg id="sc" viewBox="0 0 340 268" style="max-width:480px;margin:6px auto 0"></svg>
   <p class="cap" id="scCap"></p>
 </div>
 
@@ -155,9 +155,7 @@ function draw(){
   $('k2').textContent=(isFinite(S.r)?S.r.toFixed(2):'–')+(med!=null?' / '+med.toFixed(2):'');
   $('k2b').textContent=med!=null?'median across '+rs.length+' sites':'';
   $('k3').textContent=S.n.toLocaleString();
-  $('kpiCap').textContent=`Bias ${(S.bias>=0?'+':'')+S.bias.toFixed(1)} means the forecast runs about `
-    +`${Math.abs(S.bias).toFixed(1)} ${u} ${S.bias>=0?'high':'low'} on average. Every number here is computed from all `
-    +`${S.n.toLocaleString()} individual ${F.sp==='m8'?'site-day':'hour-by-hour'} comparisons.`;
+  kpiExplain(F,S,u,med,rs.length);
   const echo=echoStr(F);
   $('fe1').innerHTML=echo;$('fe2').innerHTML=echo;$('fe4').innerHTML=echo;
   $('fe3').innerHTML=echoStr(F,F.sp!=='m8');
@@ -171,6 +169,26 @@ function draw(){
     +' · updated '+SUM.updated.replace('T',' ')+' · '+Object.keys(SUM.sites).length+' sites known';
 }
 const fmtd=d=>d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
+let KPIEXP=true; // "What these mean" block; collapsed state remembered
+try{KPIEXP=localStorage.getItem('vkExp')!=='0';}catch(e){}
+function kpiExplain(F,S,u,med,nSites){
+  const el=$('kpiExp');
+  const pairWord=F.sp==='m8'?'site-day':'hour-by-hour';
+  if(!KPIEXP){
+    el.innerHTML=`<span style="cursor:pointer;color:var(--blue)">what do these numbers mean? &#9662;</span>`;
+    el.firstElementChild.onclick=()=>{KPIEXP=true;try{localStorage.setItem('vkExp','1');}catch(e){}kpiExplain(F,S,u,med,nSites);};
+    return;
+  }
+  const b=Math.abs(S.bias).toFixed(1);
+  el.innerHTML=`<span style="color:var(--ink-faint)">What these mean&nbsp;·&nbsp;</span>`
+    +`<b style="color:var(--ink)">Bias</b> — the forecast runs about ${b} ${u} ${S.bias>=0?'high':'low'} on average${S.bias>=0?'':' (positive would mean high)'}. `
+    +`<b style="color:var(--ink)">RMSE</b> — a typical single forecast value misses the measurement by ~${S.rmse.toFixed(1)} ${u}. `
+    +`<b style="color:var(--ink)">Pooled r</b> — how well all ${S.n.toLocaleString()} pairs line up as one cloud; partly credits knowing which places are polluted. `
+    +(med!=null?`<b style="color:var(--ink)">Median site r</b> — each site's own timing skill (does the forecast rise and fall when that site does), median across ${nSites} sites; the harder test. `:'')
+    +`<b style="color:var(--ink)">Paired values</b> — individual ${pairWord} comparisons behind every number here. `
+    +`<span style="cursor:pointer;color:var(--blue)" id="kpiHide">hide &#9652;</span>`;
+  $('kpiHide').onclick=()=>{KPIEXP=false;try{localStorage.setItem('vkExp','0');}catch(e){}kpiExplain(F,S,u,med,nSites);};
+}
 let SCMODE='h'; // 'h' = every hourly pair (day-1), 'd' = site-day means
 $('chipH').addEventListener('click',()=>{if($('chipH').classList.contains('off'))return;SCMODE='h';draw();});
 $('chipD').addEventListener('click',()=>{SCMODE='d';draw();});
@@ -182,7 +200,7 @@ function scatterMerged(F){
   $('chipH').className='chip'+(hAvail?(mode==='h'?' on':''):' off');
   $('chipH').title=hAvail?'':'hourly pairs are archived for day-1 only';
   $('chipD').className='chip'+(mode==='d'?' on':'');
-  let pts=[],cap='';
+  let pts=[],cap='',st=null;
   if(mode==='h'){
     const H=HRLY[F.sp], stI=F.st?HRLY.states.indexOf(F.st):-1;
     const nD=(HRLY.dates||[]).length||HRLY.days;
@@ -195,37 +213,61 @@ function scatterMerged(F){
       n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
     }
     if(!n){SCMODE='d';return scatterMerged(F);}
-    $('su1').textContent=`(${u}, hour × site, day 1)`;
-    const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
+    $('su1').textContent=`(hour × site, day 1)`;
     const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
-    const r=den>0?(n*sof-so*sf)/den:NaN;
+    st={n,bias:(sf-so)/n,rmse:Math.sqrt(Math.max(0,(sff-2*sof+soo)/n)),
+        r:den>0?(n*sof-so*sf)/den:NaN,nLbl:'hourly pairs'};
     cap=`${n.toLocaleString()} hourly pairs over ${win} day(s)`
-      +(pts.length>3000?' (3,000 drawn)':'')
-      +` · bias ${bias>=0?'+':''}${bias.toFixed(F.sp==='pm'?2:1)} · RMSE ${rmse.toFixed(F.sp==='pm'?2:1)} ${u}`
-      +(isFinite(r)?` · r ${r.toFixed(2)}`:'')+' · day-1 forecasts only.'
+      +(pts.length>3000?' (3,000 drawn)':'')+' · day-1 forecasts only.'
       +(+$('fWin').value>nD?` <span class="warn" style="color:#b98418">⚠ hourly pairs are archived for ${nD} days — showing all of them.</span>`:'');
   }else{
     pts=F.recs.map(r=>[r.so/r.n,r.sf/r.n]);
-    $('su1').textContent=`(${u}, site-day means)`;
-    cap=`${pts.length.toLocaleString()} site-day averages — each dot is one site's mean over one day, so the cloud is tighter and ~24× smaller than the hourly view.`;
+    $('su1').textContent=`(site-day means)`;
+    let n=0,so=0,sf=0,soo=0,sff=0,sof=0; // stats OF THE DOTS: each site-day mean weighted equally
+    pts.forEach(p=>{const o=p[0],f=p[1];n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;});
+    if(n){const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
+      st={n,bias:(sf-so)/n,rmse:Math.sqrt(Math.max(0,(sff-2*sof+soo)/n)),
+          r:den>0?(n*sof-so*sf)/den:NaN,nLbl:F.sp==='m8'?'site-days':'site-days',ofMeans:F.sp!=='m8'};}
+    cap=`${pts.length.toLocaleString()} site-day averages — each dot is one site's mean over one day, so the cloud is tighter than the hourly view.`;
   }
   if(pts.length>3000){const step=pts.length/3000;const s2=[];for(let i=0;i<pts.length;i+=step)s2.push(pts[Math.floor(i)]);pts=s2;}
+  const X0=46,X1=330,Y0=228,Y1=10;
   const mx=Math.max(5,...pts.map(p=>Math.max(p[0],p[1])))*1.05;
-  const X=v=>36+v/mx*270, Y=v=>210-v/mx*195;
-  let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
-    <line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
-    <text x="304" y="${Y(mx)+12}" font-size="10" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
+  const X=v=>X0+v/mx*(X1-X0), Y=v=>Y0-v/mx*(Y0-Y1);
+  let s=`<line x1="${X0}" y1="${Y0}" x2="${X1}" y2="${Y0}" stroke="var(--line)"/><line x1="${X0}" y1="${Y1}" x2="${X0}" y2="${Y0}" stroke="var(--line)"/>`;
+  { // nice-step ticks + faint gridlines on BOTH axes
+    const steps=[1,2,5,10,20,25,50,100,200,500];
+    const stp=steps.find(v=>mx/v<=5)||500;
+    s+=`<text x="${X0-4}" y="${Y0+4}" font-size="9" fill="var(--ink-faint)" text-anchor="end">0</text>
+        <text x="${X0}" y="${Y0+13}" font-size="9" fill="var(--ink-faint)" text-anchor="middle">0</text>`;
+    for(let v=stp;v<=mx*0.99;v+=stp){
+      s+=`<line x1="${X0}" y1="${Y(v).toFixed(1)}" x2="${X1}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" opacity="0.55"/>
+          <line x1="${X(v).toFixed(1)}" y1="${Y1}" x2="${X(v).toFixed(1)}" y2="${Y0}" stroke="var(--line)" opacity="0.55"/>
+          <text x="${X0-4}" y="${(Y(v)+3).toFixed(1)}" font-size="9" fill="var(--ink-faint)" text-anchor="end">${v}</text>
+          <text x="${X(v).toFixed(1)}" y="${Y0+13}" font-size="9" fill="var(--ink-faint)" text-anchor="middle">${v}</text>`;
+    }
+  }
+  s+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
+    <text x="${X1-4}" y="${Y1+13}" font-size="9" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
   if(F.sp==='m8'&&mx>NAAQS_O3){
-    s+=`<line x1="${X(NAAQS_O3)}" y1="15" x2="${X(NAAQS_O3)}" y2="210" stroke="var(--coral)" stroke-dasharray="3 3"/>
-      <line x1="36" y1="${Y(NAAQS_O3)}" x2="306" y2="${Y(NAAQS_O3)}" stroke="var(--coral)" stroke-dasharray="3 3"/>
-      <text x="${X(NAAQS_O3)+3}" y="25" font-size="10" fill="var(--coral)">${NAAQS_O3} ppb</text>`;
+    s+=`<line x1="${X(NAAQS_O3)}" y1="${Y1}" x2="${X(NAAQS_O3)}" y2="${Y0}" stroke="var(--coral)" stroke-dasharray="3 3"/>
+      <line x1="${X0}" y1="${Y(NAAQS_O3)}" x2="${X1}" y2="${Y(NAAQS_O3)}" stroke="var(--coral)" stroke-dasharray="3 3"/>
+      <text x="${X(NAAQS_O3)+3}" y="${Y1+15}" font-size="10" fill="var(--coral)">${NAAQS_O3} ppb</text>`;
   }
   const rr=mode==='h'?1.7:2.4, op=mode==='h'?0.22:0.4;
   pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="${rr}" fill="var(--blue)" opacity="${op}"/>`;});
-  s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
-    <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
-    <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
-    <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
+  if(st){ // in-plot stats, top-left (backed so smoke-bust outliers can't hide them)
+    const pd=F.sp==='pm'?2:1;
+    s+=`<rect x="${X0+4}" y="${Y1+4}" width="128" height="60" rx="4" fill="var(--card)" opacity="0.82"/>
+      <g font-size="10" fill="var(--ink-mute)">
+        <text x="${X0+10}" y="${Y1+17}">n = ${st.n.toLocaleString()} ${st.nLbl}</text>
+        <text x="${X0+10}" y="${Y1+30}">bias = ${st.bias>=0?'+':''}${st.bias.toFixed(pd)} ${u}</text>
+        <text x="${X0+10}" y="${Y1+43}">RMSE = ${st.rmse.toFixed(pd)} ${u}${st.ofMeans?' (of means)':''}</text>
+        <text x="${X0+10}" y="${Y1+56}">r = ${isFinite(st.r)?st.r.toFixed(2):'–'}</text>
+      </g>`;
+  }
+  s+=`<text x="${(X0+X1)/2}" y="258" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed (${u})</text>
+    <text x="14" y="${(Y0+Y1)/2}" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 14 ${(Y0+Y1)/2})">forecast (${u})</text>`;
   $('sc').innerHTML=s;
   $('scCap').innerHTML='Each dot compares one forecast value to what was measured; dots on the dashed line are perfect. '+cap;
 }
