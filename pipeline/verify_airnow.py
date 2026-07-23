@@ -360,6 +360,37 @@ def write_site_series(vdir, days, sites_meta):
             separators=(",", ":")))
         n_files += 1
     print(f"series/: {n_files} site files, {len(sdays)} day(s), {nh} hourly slots each")
+    write_hourly_day1(vdir, sdays, sites_meta)
+
+
+def write_hourly_day1(vdir, ser_days, sites_meta, n_days=14):
+    """verification/hourly-day1.json: flat (obs, fc) day-1 hourly pairs from
+    the trailing n_days, with a per-pair state index — feeds the TRUE hourly
+    scatter on verify.html (summary.json only has sufficient statistics)."""
+    days = ser_days[-n_days:]
+    states = sorted({m.get("st", "OTH") for m in sites_meta.values()} | {"OTH"})
+    sidx = {s: i for i, s in enumerate(states)}
+    out = {}
+    for sp in ("pm", "o3"):
+        o_arr, f_arr, st_arr = [], [], []
+        for d in days:
+            for sid, sps in d["ser"].items():
+                e = sps.get(sp)
+                if not e:
+                    continue
+                st = sidx[sites_meta.get(sid, {}).get("st", "OTH")] \
+                    if sites_meta.get(sid, {}).get("st", "OTH") in sidx else 0
+                for o, f in zip(e["o"], e["f"]):
+                    if o is None or f is None:
+                        continue
+                    o_arr.append(o); f_arr.append(f); st_arr.append(st)
+        out[sp] = {"o": o_arr, "f": f_arr, "si": st_arr}
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    (vdir / "hourly-day1.json").write_text(json.dumps(
+        {"updated": now_iso, "days": len(days), "states": states, **out},
+        separators=(",", ":")))
+    print(f"hourly-day1.json: {len(out['pm']['o'])} pm + {len(out['o3']['o'])} o3 "
+          f"day-1 hourly pairs over {len(days)} day(s)")
 
 
 def main():

@@ -120,6 +120,7 @@ if [ -f "$STAGE_ROOT/verification/summary.json" ]; then
   mkdir -p "$SITE/data/verification"
   cp "$STAGE_ROOT/verification/summary.json" "$SITE/data/verification/"
   [ -f "$STAGE_ROOT/verification/sites.json" ] && cp "$STAGE_ROOT/verification/sites.json" "$SITE/data/verification/"
+  [ -f "$STAGE_ROOT/verification/hourly-day1.json" ] && cp "$STAGE_ROOT/verification/hourly-day1.json" "$SITE/data/verification/"
   if [ -d "$STAGE_ROOT/verification/series" ]; then
     mkdir -p "$SITE/data/verification/series"
     cp "$STAGE_ROOT/verification/series/"*.json "$SITE/data/verification/series/" 2>/dev/null || true

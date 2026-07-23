@@ -56,6 +56,8 @@ svg{display:block;width:100%}
 </div>
 <div class="grid2">
   <div class="card"><h2>Forecast vs observed <span id="su1"></span></h2><svg id="sc" viewBox="0 0 320 240"></svg></div>
+  <div class="card" id="hsCard" style="display:none"><h2>Hourly pairs — day 1 <span id="hsSub"></span></h2><svg id="hs" viewBox="0 0 320 240"></svg>
+  <p id="hsNote" style="font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p></div>
   <div class="card"><h2><span id="ldTitle">Bias by forecast lead hour</span> <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg>
   <p id="exc" style="display:none;font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p></div>
 </div>
@@ -65,16 +67,21 @@ svg{display:block;width:100%}
 </div>
 <p class="note">Method: hourly AirNow observations are paired with the archived forecast value at the
 nearest grid cell for every cycle covering that hour (lead day 1 = same-day cycle, day 2–3 = earlier cycles).
-Scatter shows site-day mean pairs. Bias = forecast − observed. OTH = non-US or unrecognized site codes (e.g. BC).</p>
+The main scatter shows site-day mean pairs (sufficient statistics only are archived); the hourly panel shows
+true hour × site day-1 pairs from the trailing two weeks. Bias = forecast − observed.
+OTH = non-US or unrecognized site codes (e.g. BC).</p>
 </div>
 <script>
 let SUM=null;
 const $=id=>document.getElementById(id);
 const UNITS={pm:'µg/m³',o3:'ppb',m8:'ppb'};
 const NAAQS_O3=70; // ppb, MDA8 standard
+let HRLY=null;
 fetch('data/verification/summary.json').then(r=>{if(!r.ok)throw 0;return r.json();})
   .then(s=>{SUM=s;initStates();draw();})
   .catch(()=>{$('content').style.display='none';$('empty').style.display='block';});
+fetch('data/verification/hourly-day1.json').then(r=>{if(!r.ok)throw 0;return r.json();})
+  .then(h=>{HRLY=h;if(SUM)draw();}).catch(()=>{});
 ['fSp','fWin','fSt','fLd'].forEach(id=>$(id).addEventListener('change',draw));
 
 function initStates(){
@@ -111,6 +118,7 @@ function draw(){
   $('k2').textContent=isFinite(S.r)?S.r.toFixed(2):'–';
   $('k3').textContent=S.n.toLocaleString();
   scatter(F);
+  hourlyScatter(F);
   if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);}
   else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);}
   tseries(F);table(F);
@@ -137,6 +145,47 @@ function scatter(F){
     <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
     <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
   $('sc').innerHTML=s;
+}
+function hourlyScatter(F){
+  // TRUE hour-by-hour pairs (day-1 only, trailing window from hourly-day1.json);
+  // the main scatter shows site-day MEANS, which compress variance ~24x in count
+  const card=$('hsCard');
+  const H=HRLY&&HRLY[F.sp], ld=$('fLd').value;
+  if(!H||!H.o.length||F.sp==='m8'||(ld&&ld!=='1')){card.style.display='none';return;}
+  card.style.display='';
+  const stI=F.st?HRLY.states.indexOf(F.st):-1;
+  let n=0,so=0,sf=0,soo=0,sff=0,sof=0;
+  const pts=[];
+  for(let i=0;i<H.o.length;i++){
+    if(stI>=0&&H.si[i]!==stI)continue;
+    const o=H.o[i],f=H.f[i];
+    pts.push([o,f]);
+    n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
+  }
+  if(!n){card.style.display='none';return;}
+  const shown=Math.min(pts.length,3000);
+  let draw=pts;
+  if(pts.length>3000){const step=pts.length/3000;draw=[];for(let i=0;i<pts.length;i+=step)draw.push(pts[Math.floor(i)]);}
+  const u=UNITS[F.sp];
+  $('hsSub').textContent=`(${u}, hour × site, last ${HRLY.days} days)`;
+  const mx=Math.max(5,...draw.map(p=>Math.max(p[0],p[1])))*1.05;
+  const X=v=>36+v/mx*270, Y=v=>210-v/mx*195;
+  let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
+    <line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
+    <text x="304" y="${Y(mx)+12}" font-size="10" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
+  draw.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="1.7" fill="var(--blue)" opacity="0.22"/>`;});
+  s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
+    <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
+    <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
+    <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
+  $('hs').innerHTML=s;
+  const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
+  const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
+  const r=den>0?(n*sof-so*sf)/den:NaN;
+  $('hsNote').textContent=`${n.toLocaleString()} hourly pairs`
+    +(shown<pts.length?` (${shown.toLocaleString()} drawn)`:'')
+    +` · bias ${bias>=0?'+':''}${bias.toFixed(F.sp==='pm'?2:1)} · RMSE ${rmse.toFixed(F.sp==='pm'?2:1)} ${u}`
+    +(isFinite(r)?` · r ${r.toFixed(2)}`:'')+' · day-1 forecasts only';
 }
 function leadhour(F){
   const acc={};
