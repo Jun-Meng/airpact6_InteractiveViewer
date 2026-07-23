@@ -370,10 +370,11 @@ def write_hourly_day1(vdir, ser_days, sites_meta, n_days=14):
     days = ser_days[-n_days:]
     states = sorted({m.get("st", "OTH") for m in sites_meta.values()} | {"OTH"})
     sidx = {s: i for i, s in enumerate(states)}
+    dates = [d["date"] for d in days]  # di indexes into this (oldest first)
     out = {}
     for sp in ("pm", "o3"):
-        o_arr, f_arr, st_arr = [], [], []
-        for d in days:
+        o_arr, f_arr, st_arr, d_arr = [], [], [], []
+        for di, d in enumerate(days):
             for sid, sps in d["ser"].items():
                 e = sps.get(sp)
                 if not e:
@@ -383,11 +384,11 @@ def write_hourly_day1(vdir, ser_days, sites_meta, n_days=14):
                 for o, f in zip(e["o"], e["f"]):
                     if o is None or f is None:
                         continue
-                    o_arr.append(o); f_arr.append(f); st_arr.append(st)
-        out[sp] = {"o": o_arr, "f": f_arr, "si": st_arr}
+                    o_arr.append(o); f_arr.append(f); st_arr.append(st); d_arr.append(di)
+        out[sp] = {"o": o_arr, "f": f_arr, "si": st_arr, "di": d_arr}
     now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
     (vdir / "hourly-day1.json").write_text(json.dumps(
-        {"updated": now_iso, "days": len(days), "states": states, **out},
+        {"updated": now_iso, "days": len(days), "dates": dates, "states": states, **out},
         separators=(",", ":")))
     print(f"hourly-day1.json: {len(out['pm']['o'])} pm + {len(out['o3']['o'])} o3 "
           f"day-1 hourly pairs over {len(days)} day(s)")

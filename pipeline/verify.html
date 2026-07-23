@@ -30,6 +30,14 @@ svg{display:block;width:100%}
 .bar{flex:1;height:8px;background:var(--bg);border-radius:4px}.bar div{height:8px;border-radius:4px;background:#f0997b}
 .note{font-size:11px;color:var(--ink-faint);margin-top:14px;line-height:1.6}
 #empty{display:none;text-align:center;color:var(--ink-mute);padding:60px 0}
+.sechd{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px;margin:18px 0 8px}
+.sect{font-size:11px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.echo{font-size:11px;color:var(--blue)}
+.echo .warn{color:#b98418}
+.cap{font-size:11px;color:var(--ink-faint);margin:8px 0 0;line-height:1.55}
+.chip{font-size:10px;border:1px solid var(--line);color:var(--ink-mute);border-radius:5px;padding:1px 8px;cursor:pointer;user-select:none}
+.chip.on{border-color:var(--blue);color:var(--blue)}
+.chip.off{opacity:.45;cursor:default}
 </style>
 </head>
 <body>
@@ -48,28 +56,49 @@ svg{display:block;width:100%}
 </header>
 <div id="empty">No verification data yet — the nightly pairing job hasn't produced results for this filter.</div>
 <div id="content">
+
+<div class="sechd"><span class="sect">1 · How accurate is the forecast?</span><span class="echo" id="fe1"></span></div>
 <div class="kpis">
   <div class="kpi"><p class="l">Mean bias</p><p class="v" id="k0">–</p></div>
-  <div class="kpi"><p class="l">RMSE</p><p class="v" id="k1">–</p></div>
-  <div class="kpi"><p class="l">Correlation r <span style="color:var(--ink-faint)">(pooled)</span></p><p class="v" id="k2">–</p>
+  <div class="kpi"><p class="l">Typical error (RMSE)</p><p class="v" id="k1">–</p></div>
+  <div class="kpi"><p class="l">Correlation <span style="color:var(--ink-faint)">(pooled / median site)</span></p><p class="v" id="k2">–</p>
     <p class="l" id="k2b" style="margin-top:2px"></p></div>
   <div class="kpi"><p class="l">Paired values</p><p class="v" id="k3">–</p></div>
 </div>
-<div class="grid2">
-  <div class="card"><h2>Forecast vs observed <span id="su1"></span></h2><svg id="sc" viewBox="0 0 320 240"></svg></div>
-  <div class="card" id="hsCard" style="display:none"><h2>Hourly pairs — day 1 <span id="hsSub"></span></h2><svg id="hs" viewBox="0 0 320 240"></svg>
-  <p id="hsNote" style="font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p></div>
-  <div class="card"><h2><span id="ldTitle">Bias by forecast lead hour</span> <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg>
-  <p id="exc" style="display:none;font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p></div>
+<p class="cap" id="kpiCap"></p>
+
+<div class="sechd"><span class="sect">2 · Does it track observations?</span><span class="echo" id="fe2"></span></div>
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+    <h2 style="margin:0">Forecast vs observed <span id="su1"></span></h2>
+    <span id="scChips" style="white-space:nowrap">
+      <span class="chip" id="chipH">every hour</span><span class="chip" id="chipD" style="margin-left:4px">daily averages by site</span>
+    </span>
+  </div>
+  <svg id="sc" viewBox="0 0 320 240" style="max-width:460px;margin:6px auto 0"></svg>
+  <p class="cap" id="scCap"></p>
 </div>
-<div class="card"><h2>Daily domain mean <span>— <span style="color:var(--blue)">●</span> observed &nbsp;<span style="color:var(--ink-mute)">—</span> forecast (selected leads)</span></h2><svg id="ts" viewBox="0 0 940 170"></svg></div>
-<div class="card"><h2>Sites with largest RMSE <span id="su3"></span></h2><div id="tbl"></div></div>
+
+<div class="sechd"><span class="sect">3 · How fast does skill fade?</span><span class="echo" id="fe3"></span></div>
+<div class="grid2">
+  <div class="card"><h2><span id="ldTitle">Bias by forecast lead hour</span> <span id="su2"></span></h2><svg id="ld" viewBox="0 0 320 240"></svg>
+  <p id="exc" style="display:none;font-size:12px;color:var(--ink-mute);margin:8px 0 0"></p>
+  <p class="cap" id="ldCap"></p></div>
+  <div class="card"><h2>Daily domain mean <span>— <span style="color:var(--blue)">●</span> observed &nbsp;<span style="color:var(--ink-mute)">—</span> forecast</span></h2><svg id="ts" viewBox="0 0 940 170"></svg>
+  <p class="cap">Day-by-day tracking of the whole filtered domain: dots are what monitors measured, the line is what was forecast.</p></div>
+</div>
+
+<div class="sechd"><span class="sect">4 · Where is it weakest?</span><span class="echo" id="fe4"></span></div>
+<div class="card"><h2>Sites with largest RMSE <span id="su3"></span></h2><div id="tbl"></div>
+<p class="cap">The hardest sites — usually smoke-affected or complex terrain. r in coral marks poor hour-to-hour timing at that site. <a href="about.html">What do these numbers mean? &rarr;</a></p></div>
+
 <p class="note" id="meta"></p>
 </div>
 <p class="note">Method: hourly AirNow observations are paired with the archived forecast value at the
 nearest grid cell for every cycle covering that hour (lead day 1 = same-day cycle, day 2–3 = earlier cycles).
-The main scatter shows site-day mean pairs (sufficient statistics only are archived); the hourly panel shows
-true hour × site day-1 pairs from the trailing two weeks. Bias = forecast − observed.
+The scatter offers two views: "every hour" plots true hour × site day-1 pairs (archived for the trailing
+two weeks); "daily averages by site" plots site-day means for any window and lead (only sufficient
+statistics are archived long-term). Bias = forecast − observed.
 OTH = non-US or unrecognized site codes (e.g. BC).</p>
 </div>
 <script>
@@ -109,28 +138,78 @@ function stats(recs){
   const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
   return {n,bias,rmse,r:den>0?(n*sof-so*sf)/den:NaN,mo:so/n};
 }
+function echoStr(F,leadNote){
+  const spL={pm:'PM2.5',o3:'ozone',m8:'ozone MDA8'}[F.sp];
+  return [spL, F.st||'all regions', 'last '+$('fWin').value+' days',
+    leadNote?'<span class="warn">all leads shown</span>':(F.ld?'day '+F.ld:'all leads')].join(' · ');
+}
 function draw(){
   const F=filtered(), u=UNITS[F.sp], S=stats(F.recs);
-  $('su1').textContent='('+u+', site-day means)';$('su2').textContent='('+u+')';
+  $('su2').textContent='('+u+')';
   $('empty').style.display=S?'none':'block';$('content').style.display=S?'':'none';
   if(!S)return;
   $('k0').innerHTML=(S.bias>=0?'+':'')+S.bias.toFixed(F.sp==='pm'?2:1)+' <span class="u">'+u+'</span>';
   $('k1').innerHTML=S.rmse.toFixed(F.sp==='pm'?2:1)+' <span class="u">'+u+'</span>';
-  $('k2').textContent=isFinite(S.r)?S.r.toFixed(2):'–';
+  const rs=siteAgg(F).map(s=>s.r).filter(r=>r!=null).sort((a,b)=>a-b);
+  const med=rs.length>=3?(rs.length%2?rs[(rs.length-1)/2]:(rs[rs.length/2-1]+rs[rs.length/2])/2):null;
+  $('k2').textContent=(isFinite(S.r)?S.r.toFixed(2):'–')+(med!=null?' / '+med.toFixed(2):'');
+  $('k2b').textContent=med!=null?'median across '+rs.length+' sites':'';
   $('k3').textContent=S.n.toLocaleString();
-  scatter(F);
-  hourlyScatter(F);
-  medianSiteR(F);
-  if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);}
-  else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);}
+  $('kpiCap').textContent=`Bias ${(S.bias>=0?'+':'')+S.bias.toFixed(1)} means the forecast runs about `
+    +`${Math.abs(S.bias).toFixed(1)} ${u} ${S.bias>=0?'high':'low'} on average. Every number here is computed from all `
+    +`${S.n.toLocaleString()} individual ${F.sp==='m8'?'site-day':'hour-by-hour'} comparisons.`;
+  const echo=echoStr(F);
+  $('fe1').innerHTML=echo;$('fe2').innerHTML=echo;$('fe4').innerHTML=echo;
+  $('fe3').innerHTML=echoStr(F,F.sp!=='m8');
+  scatterMerged(F);
+  if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);
+    $('ldCap').textContent='Bias for the same day forecast 1, 2, and 3 days ahead.';}
+  else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);
+    $('ldCap').textContent='How the average error changes across the 72 hours of a forecast, pooled over every cycle covering each hour — the lead-day filter does not apply here by definition.';}
   tseries(F);table(F);
   $('meta').textContent='Data: '+F.days.length+' day(s) ending '+fmtd(F.days[F.days.length-1].date)
     +' · updated '+SUM.updated.replace('T',' ')+' · '+Object.keys(SUM.sites).length+' sites known';
 }
 const fmtd=d=>d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8);
-function scatter(F){
-  let pts=F.recs.map(r=>[r.so/r.n,r.sf/r.n]);
-  if(pts.length>1500){const step=pts.length/1500;const s2=[];for(let i=0;i<pts.length;i+=step)s2.push(pts[Math.floor(i)]);pts=s2;}
+let SCMODE='h'; // 'h' = every hourly pair (day-1), 'd' = site-day means
+$('chipH').addEventListener('click',()=>{if($('chipH').classList.contains('off'))return;SCMODE='h';draw();});
+$('chipD').addEventListener('click',()=>{SCMODE='d';draw();});
+function scatterMerged(F){
+  const u=UNITS[F.sp];
+  const hAvail=!!(HRLY&&HRLY[F.sp]&&HRLY[F.sp].o.length&&F.sp!=='m8'&&(!F.ld||F.ld==='1'||F.ld===1));
+  let mode=(SCMODE==='h'&&hAvail)?'h':'d';
+  $('scChips').style.display=F.sp==='m8'?'none':'';
+  $('chipH').className='chip'+(hAvail?(mode==='h'?' on':''):' off');
+  $('chipH').title=hAvail?'':'hourly pairs are archived for day-1 only';
+  $('chipD').className='chip'+(mode==='d'?' on':'');
+  let pts=[],cap='';
+  if(mode==='h'){
+    const H=HRLY[F.sp], stI=F.st?HRLY.states.indexOf(F.st):-1;
+    const nD=(HRLY.dates||[]).length||HRLY.days;
+    const win=Math.min(+$('fWin').value,nD), dMin=nD-win;
+    let n=0,so=0,sf=0,soo=0,sff=0,sof=0;
+    for(let i=0;i<H.o.length;i++){
+      if(stI>=0&&H.si[i]!==stI)continue;
+      if(H.di&&H.di[i]<dMin)continue;
+      const o=H.o[i],f=H.f[i];pts.push([o,f]);
+      n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
+    }
+    if(!n){SCMODE='d';return scatterMerged(F);}
+    $('su1').textContent=`(${u}, hour × site, day 1)`;
+    const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
+    const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
+    const r=den>0?(n*sof-so*sf)/den:NaN;
+    cap=`${n.toLocaleString()} hourly pairs over ${win} day(s)`
+      +(pts.length>3000?' (3,000 drawn)':'')
+      +` · bias ${bias>=0?'+':''}${bias.toFixed(F.sp==='pm'?2:1)} · RMSE ${rmse.toFixed(F.sp==='pm'?2:1)} ${u}`
+      +(isFinite(r)?` · r ${r.toFixed(2)}`:'')+' · day-1 forecasts only.'
+      +(+$('fWin').value>nD?` <span class="warn" style="color:#b98418">⚠ hourly pairs are archived for ${nD} days — showing all of them.</span>`:'');
+  }else{
+    pts=F.recs.map(r=>[r.so/r.n,r.sf/r.n]);
+    $('su1').textContent=`(${u}, site-day means)`;
+    cap=`${pts.length.toLocaleString()} site-day averages — each dot is one site's mean over one day, so the cloud is tighter and ~24× smaller than the hourly view.`;
+  }
+  if(pts.length>3000){const step=pts.length/3000;const s2=[];for(let i=0;i<pts.length;i+=step)s2.push(pts[Math.floor(i)]);pts=s2;}
   const mx=Math.max(5,...pts.map(p=>Math.max(p[0],p[1])))*1.05;
   const X=v=>36+v/mx*270, Y=v=>210-v/mx*195;
   let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
@@ -141,53 +220,14 @@ function scatter(F){
       <line x1="36" y1="${Y(NAAQS_O3)}" x2="306" y2="${Y(NAAQS_O3)}" stroke="var(--coral)" stroke-dasharray="3 3"/>
       <text x="${X(NAAQS_O3)+3}" y="25" font-size="10" fill="var(--coral)">${NAAQS_O3} ppb</text>`;
   }
-  pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.4" fill="var(--blue)" opacity="0.4"/>`;});
+  const rr=mode==='h'?1.7:2.4, op=mode==='h'?0.22:0.4;
+  pts.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="${rr}" fill="var(--blue)" opacity="${op}"/>`;});
   s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
     <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
     <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
     <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
   $('sc').innerHTML=s;
-}
-function hourlyScatter(F){
-  // TRUE hour-by-hour pairs (day-1 only, trailing window from hourly-day1.json);
-  // the main scatter shows site-day MEANS, which compress variance ~24x in count
-  const card=$('hsCard');
-  const H=HRLY&&HRLY[F.sp], ld=$('fLd').value;
-  if(!H||!H.o.length||F.sp==='m8'||(ld&&ld!=='1')){card.style.display='none';return;}
-  card.style.display='';
-  const stI=F.st?HRLY.states.indexOf(F.st):-1;
-  let n=0,so=0,sf=0,soo=0,sff=0,sof=0;
-  const pts=[];
-  for(let i=0;i<H.o.length;i++){
-    if(stI>=0&&H.si[i]!==stI)continue;
-    const o=H.o[i],f=H.f[i];
-    pts.push([o,f]);
-    n++;so+=o;sf+=f;soo+=o*o;sff+=f*f;sof+=o*f;
-  }
-  if(!n){card.style.display='none';return;}
-  const shown=Math.min(pts.length,3000);
-  let draw=pts;
-  if(pts.length>3000){const step=pts.length/3000;draw=[];for(let i=0;i<pts.length;i+=step)draw.push(pts[Math.floor(i)]);}
-  const u=UNITS[F.sp];
-  $('hsSub').textContent=`(${u}, hour × site, last ${HRLY.days} days)`;
-  const mx=Math.max(5,...draw.map(p=>Math.max(p[0],p[1])))*1.05;
-  const X=v=>36+v/mx*270, Y=v=>210-v/mx*195;
-  let s=`<line x1="36" y1="210" x2="306" y2="210" stroke="var(--line)"/><line x1="36" y1="15" x2="36" y2="210" stroke="var(--line)"/>
-    <line x1="${X(0)}" y1="${Y(0)}" x2="${X(mx)}" y2="${Y(mx)}" stroke="#b6bec6" stroke-dasharray="4 3"/>
-    <text x="304" y="${Y(mx)+12}" font-size="10" fill="var(--ink-faint)" text-anchor="end">1:1</text>`;
-  draw.forEach(p=>{s+=`<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="1.7" fill="var(--blue)" opacity="0.22"/>`;});
-  s+=`<text x="171" y="232" font-size="11" fill="var(--ink-mute)" text-anchor="middle">observed</text>
-    <text x="12" y="112" font-size="11" fill="var(--ink-mute)" text-anchor="middle" transform="rotate(-90 12 112)">forecast</text>
-    <text x="36" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">0</text>
-    <text x="306" y="222" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${mx.toFixed(0)}</text>`;
-  $('hs').innerHTML=s;
-  const bias=(sf-so)/n, rmse=Math.sqrt(Math.max(0,(sff-2*sof+soo)/n));
-  const den=Math.sqrt(Math.max(0,n*soo-so*so))*Math.sqrt(Math.max(0,n*sff-sf*sf));
-  const r=den>0?(n*sof-so*sf)/den:NaN;
-  $('hsNote').textContent=`${n.toLocaleString()} hourly pairs`
-    +(shown<pts.length?` (${shown.toLocaleString()} drawn)`:'')
-    +` · bias ${bias>=0?'+':''}${bias.toFixed(F.sp==='pm'?2:1)} · RMSE ${rmse.toFixed(F.sp==='pm'?2:1)} ${u}`
-    +(isFinite(r)?` · r ${r.toFixed(2)}`:'')+' · day-1 forecasts only';
+  $('scCap').innerHTML='Each dot compares one forecast value to what was measured; dots on the dashed line are perfect. '+cap;
 }
 function leadhour(F){
   const acc={};
@@ -269,13 +309,6 @@ function siteAgg(F){ // per-site pooled sufficient stats -> per-site TEMPORAL st
       bias:(a.sf-a.so)/a.n,
       r:(a.n>=rMin&&den>0)?(a.n*a.sof-a.so*a.sf)/den:null};
   });
-}
-function medianSiteR(F){ // shown under the pooled r KPI; the gap is diagnostic
-  const rs=siteAgg(F).map(s=>s.r).filter(r=>r!=null).sort((a,b)=>a-b);
-  const el=$('k2b');
-  if(rs.length<3){el.textContent='';return;}
-  const med=rs.length%2?rs[(rs.length-1)/2]:(rs[rs.length/2-1]+rs[rs.length/2])/2;
-  el.innerHTML=`median site r <b style="color:var(--blue)">${med.toFixed(2)}</b> · ${rs.length} sites`;
 }
 function table(F){
   const rows=siteAgg(F).filter(s=>s.n>=8).sort((a,b)=>b.rmse-a.rmse).slice(0,8);
