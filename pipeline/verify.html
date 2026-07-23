@@ -51,7 +51,8 @@ svg{display:block;width:100%}
 <div class="kpis">
   <div class="kpi"><p class="l">Mean bias</p><p class="v" id="k0">–</p></div>
   <div class="kpi"><p class="l">RMSE</p><p class="v" id="k1">–</p></div>
-  <div class="kpi"><p class="l">Correlation r</p><p class="v" id="k2">–</p></div>
+  <div class="kpi"><p class="l">Correlation r <span style="color:var(--ink-faint)">(pooled)</span></p><p class="v" id="k2">–</p>
+    <p class="l" id="k2b" style="margin-top:2px"></p></div>
   <div class="kpi"><p class="l">Paired values</p><p class="v" id="k3">–</p></div>
 </div>
 <div class="grid2">
@@ -119,6 +120,7 @@ function draw(){
   $('k3').textContent=S.n.toLocaleString();
   scatter(F);
   hourlyScatter(F);
+  medianSiteR(F);
   if(F.sp==='m8'){$('ldTitle').textContent='Bias by lead day';leadday(F);}
   else{$('ldTitle').textContent='Bias by forecast lead hour';$('exc').style.display='none';leadhour(F);}
   tseries(F);table(F);
@@ -255,14 +257,28 @@ function tseries(F){
     if(i%lbl===0)s+=`<text x="${X(i).toFixed(1)}" y="156" font-size="10" fill="var(--ink-faint)" text-anchor="middle">${p.d.slice(4,6)}/${p.d.slice(6,8)}</text>`;});
   $('ts').innerHTML=s;
 }
-function table(F){
+function siteAgg(F){ // per-site pooled sufficient stats -> per-site TEMPORAL stats
   const by={};
   F.recs.forEach(r=>{const a=by[r.sid]=by[r.sid]||{n:0,so:0,sf:0,soo:0,sff:0,sof:0};
     a.n+=r.n;a.so+=r.so;a.sf+=r.sf;a.soo+=r.soo;a.sff+=r.sff;a.sof+=r.sof;});
-  const rows=Object.entries(by).filter(([,a])=>a.n>=8)
-    .map(([sid,a])=>({sid,n:a.n,rmse:Math.sqrt(Math.max(0,(a.sff-2*a.sof+a.soo)/a.n)),
-      bias:(a.sf-a.so)/a.n}))
-    .sort((a,b)=>b.rmse-a.rmse).slice(0,8);
+  const rMin=F.sp==='m8'?8:48; // below this, per-site r is noise -> null
+  return Object.entries(by).map(([sid,a])=>{
+    const den=Math.sqrt(Math.max(0,a.n*a.soo-a.so*a.so))*Math.sqrt(Math.max(0,a.n*a.sff-a.sf*a.sf));
+    return {sid,n:a.n,
+      rmse:Math.sqrt(Math.max(0,(a.sff-2*a.sof+a.soo)/a.n)),
+      bias:(a.sf-a.so)/a.n,
+      r:(a.n>=rMin&&den>0)?(a.n*a.sof-a.so*a.sf)/den:null};
+  });
+}
+function medianSiteR(F){ // shown under the pooled r KPI; the gap is diagnostic
+  const rs=siteAgg(F).map(s=>s.r).filter(r=>r!=null).sort((a,b)=>a-b);
+  const el=$('k2b');
+  if(rs.length<3){el.textContent='';return;}
+  const med=rs.length%2?rs[(rs.length-1)/2]:(rs[rs.length/2-1]+rs[rs.length/2])/2;
+  el.innerHTML=`median site r <b style="color:var(--blue)">${med.toFixed(2)}</b> · ${rs.length} sites`;
+}
+function table(F){
+  const rows=siteAgg(F).filter(s=>s.n>=8).sort((a,b)=>b.rmse-a.rmse).slice(0,8);
   $('su3').textContent=rows.length?'(min 8 pairs)':'';
   if(!rows.length){$('tbl').innerHTML='<p style="font-size:12px;color:var(--ink-faint)">not enough pairs</p>';return;}
   const mx=rows[0].rmse, u=UNITS[F.sp];
@@ -270,7 +286,8 @@ function table(F){
     const m=SUM.sites[r.sid]||{name:r.sid,st:''};
     return `<div class="row"><span style="flex:0 0 250px">${m.name} <span style="color:var(--ink-faint);font-size:11px">${m.st} · n=${r.n}</span></span>
       <div class="bar"><div style="width:${(r.rmse/mx*100).toFixed(0)}%"></div></div>
-      <span style="flex:0 0 150px;text-align:right;font-family:var(--mono);font-size:12px">${r.rmse.toFixed(1)} ${u} · bias ${(r.bias>=0?'+':'')}${r.bias.toFixed(1)}</span></div>`;
+      <span style="flex:0 0 150px;text-align:right;font-family:var(--mono);font-size:12px">${r.rmse.toFixed(1)} ${u} · bias ${(r.bias>=0?'+':'')}${r.bias.toFixed(1)}</span>
+      <span style="flex:0 0 52px;text-align:right;font-family:var(--mono);font-size:12px;${(r.r!=null&&r.r<0.4)?'color:var(--coral)':''}">${r.r!=null?'r '+r.r.toFixed(2):'–'}</span></div>`;
   }).join('');
 }
 </script>
