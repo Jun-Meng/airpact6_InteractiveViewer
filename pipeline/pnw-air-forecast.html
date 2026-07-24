@@ -434,6 +434,10 @@
         <span class="ver">v1.0</span>
       </div>
       <p class="sub">72-hour PM2.5 &amp; ozone forecast · 4&nbsp;km grid · Pacific Northwest</p>
+      <p style="margin:9px 0 0;font-size:11px">
+        <a href="about.html" style="color:#2f6fd0;text-decoration:none">About &rarr;</a>
+        <a href="verify.html" style="color:#2f6fd0;text-decoration:none;margin-left:11px">Model Performance &rarr;</a>
+        <a href="data.html" style="color:#2f6fd0;text-decoration:none;margin-left:11px">Data &rarr;</a></p>
       <span class="demo-badge">Synthetic demo data</span>
     </div>
 
@@ -456,10 +460,6 @@
     <div class="section">
       <p class="label">Overlays</p>
       <div id="ovlGroups"></div>
-      <p style="margin:10px 0 0;font-size:11px">
-        <a href="verify.html" style="color:#2f6fd0;text-decoration:none">Forecast verification &rarr;</a>
-        <a href="about.html" style="color:#2f6fd0;text-decoration:none;margin-left:12px">About &rarr;</a>
-        <a href="data.html" style="color:#2f6fd0;text-decoration:none;margin-left:12px">Data &rarr;</a></p>
     </div>
 
     <div class="section">
@@ -808,7 +808,7 @@ function banner(msg){const b=document.createElement('div');b.className='map-tag'
 
 /* ---------- state ---------- */
 let view='hourly', species='pm', dailyPol='all', hour=0, dayIdx=0, colorMode='conc', opacityVal=0.8, playing=false, stepMs=320, timer=null;
-const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false,basemap:false,truecolor:false};
+const show={monitors:true,cities:true,states:true,counties:false,class1:false,tribal:false,grid:false,fires:false,smoke:false,basemap:false,truecolor:false,aqlayer:true};
 try{show.basemap=localStorage.getItem('basemap')==='topo';}catch(e){}
 
 /* ---------- inject find-a-place ---------- */
@@ -824,6 +824,8 @@ secPollutant.insertAdjacentHTML('beforebegin',
    <div id="geores"></div></div>`);
 /* collapsible overlay groups (order + grouping teach the obs-vs-forecast split) */
 const OVL_GROUPS=[
+  {id:'fc',name:'Model forecast',hint:'The AIRPACT-6 forecast — model results, not measurements',open:true,items:[
+    ['aqlayer','AIRPACT-6 surface layer']]},
   {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
     ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fire detections (VIIRS 24 h)'],
     ['truecolor','Satellite true color (daily)']]},
@@ -2146,11 +2148,19 @@ function bindToggles(){
       if(k==='fires')toggleFires();
       if(k==='smoke')toggleSmoke();
       if(k==='truecolor')toggleTruecolor();
+      if(k==='aqlayer')toggleAqLayer();
       if(k==='basemap')setBasemap(show.basemap);
       buildOverlayPanel();});
   });
 }
 buildOverlayPanel();
+
+/* ---------- model layer on/off (pure-observation view when off) ---------- */
+function toggleAqLayer(){
+  if(map.getLayer('aq'))map.setLayoutProperty('aq','visibility',show.aqlayer?'visible':'none');
+  const lg=document.getElementById('mapLegend');
+  if(lg)lg.style.opacity=show.aqlayer?'':'0.45'; // dim: legend describes a hidden layer
+}
 
 /* ---------- VIIRS true-color satellite imagery (NASA GIBS, one image/day) ----------
    Sits ABOVE the basemap and BELOW the model raster — toggling it on
