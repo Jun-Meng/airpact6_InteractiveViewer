@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=viz_watcher
 #SBATCH --partition=meng
-#SBATCH --time=06:15:00
+#SBATCH --time=10:30:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --output=/data/project/airpact/jmeng/Visualization/logs/viz_watcher_%j.log
@@ -26,8 +26,11 @@ AP6=/data/project/airpact/AP6_outputs
 SELF=$PIPE/viz_watcher_daily.sh
 ARM_TIME=07:00            # fixed daily start time (re-arm target); tune to your schedule
 
-MAX_POLLS=12              # 12 * 30 min = 6 h polling window
-INTERVAL=1800            # 30 min
+# Widened 2026-08-03: cycles have been finishing early-to-mid afternoon and
+# SLURM sometimes releases this job well after ARM_TIME — a 10 h window at a
+# 15 min cadence covers both, and publishes within 15 min of completion.
+MAX_POLLS=40              # 40 * 15 min = 10 h polling window (~07:00 -> ~17:00)
+INTERVAL=900              # 15 min
 
 POLL=0
 OUTCOME=none   # none = polling window exhausted -> job exits 1 -> SLURM FAIL email
