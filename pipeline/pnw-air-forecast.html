@@ -2266,8 +2266,14 @@ function tcChip(d,raw){
   const ptToday=new Date().toLocaleDateString('sv-SE',{timeZone:PT});
   // amber "pending" line only when the image is older than today AND the
   // slider is on today/future — an old date while browsing the archive is
-  // intentional, not pending
-  let want=ptToday; try{want=tcWantedDate();}catch(e){}
+  // intentional, not pending. NOTE: must use the slider's RAW date here;
+  // tcWantedDate() clamps to the newest available image, which made this
+  // condition unsatisfiable (bit us 08-04).
+  let want=ptToday;
+  try{
+    want=(view==='daily'&&DATA.daily)?DATA.daily.days[dayIdx].date
+      :new Date(DATA.epoch(hour)).toLocaleDateString('sv-SE',{timeZone:PT});
+  }catch(e){}
   const pending=d<ptToday&&want>=ptToday;
   c.innerHTML=`<div>showing: VIIRS <b style="color:#5b9bec">${TC_SATNAME}</b> true color · ${d} · NASA GIBS</div>`
     +(pending?`<div style="color:#e8b64c">today's image usually arrives by ~4 PM PT</div>`:'');
