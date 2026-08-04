@@ -45,15 +45,23 @@ worse of the two, using U.S. EPA Air Quality Index breakpoints. AQI is
 computed in your browser from the concentrations, so coloring stays exact.</p>
 
 <h2>Observations shown alongside the model</h2>
-<p>Monitor dots, observed curves in popups, and all verification statistics
+<p>Monitor dots, observed curves in popups, and all performance statistics
 use real-time and recent observations from the U.S. EPA/partner
 <a href="https://www.airnow.gov/">AirNow</a> network. Smoke plumes are the
 analyst-drawn <a href="https://www.ospo.noaa.gov/products/land/hms.html">NOAA
 Hazard Mapping System</a> analysis (GOES satellite imagery, updated through
-the day). Fire detections are 375&nbsp;m VIIRS hotspots from
-<a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, shown within
-about a minute of satellite overpass. Observations are labeled as such
-throughout the site — they are measurements, not forecast.</p>
+the day). Fires appear as two layers, both served by
+<a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>: red-orange
+flames are 375&nbsp;m VIIRS hotspots from the past 24&nbsp;hours (S-NPP,
+NOAA-20, NOAA-21; shown within about a minute of overpass), and yellow
+"burning now" flames are detections from the geostationary GOES-West
+satellite's ABI Fire Detection and Characterization product — coarser
+(~2&nbsp;km) but refreshed every few minutes. The optional satellite
+true-color layer is daily VIIRS corrected-reflectance imagery from
+<a href="https://worldview.earthdata.nasa.gov/">NASA GIBS/Worldview</a>
+(one image per day, from the early-afternoon overpass). Observations are
+labeled as such throughout the site — they are measurements, not
+forecast.</p>
 
 <h2>How good is the forecast?</h2>
 <p>We verify it in the open. Every night the previous day's AirNow
