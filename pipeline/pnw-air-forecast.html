@@ -2172,6 +2172,19 @@ function toggleAqLayer(){
    date follows the time slider's day, clamped to the newest available image
    (today's VIIRS pass is typically published by mid-afternoon PT). */
 let TC_DATE=null, TC_HID_MODEL=false;
+async function tcResolveDate(want){
+  // GIBS serves valid-but-BLACK tiles for unpublished dates (no 404), so
+  // probe a PNW land tile and walk back until real imagery appears: black
+  // JPEGs are ~1-2 KB, real scenes tens of KB.
+  for(let k=0;k<3;k++){
+    const d=new Date(Date.parse(want+'T12:00:00Z')-k*86400e3).toISOString().slice(0,10);
+    try{
+      const r=await fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/5/11/5.jpg`);
+      if(r.ok&&(await r.blob()).size>3000)return d;
+    }catch(e){}
+  }
+  return null;
+}
 function tcAvailableToday(){ // heuristic: overpass ~13:30 PT + ~1.5 h processing
   return +new Date().toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:'America/Los_Angeles'})>=15;
 }
@@ -2187,7 +2200,7 @@ function tcWantedDate(){
 function tcUrl(d){
   return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
 }
-function tcChip(d){
+function tcChip(d,raw){
   let c=document.getElementById('tcChip');
   if(!d){if(c)c.remove();return;}
   if(!c){
@@ -2196,7 +2209,7 @@ function tcChip(d){
       'color:var(--ink-mute);font:11px var(--mono,monospace);padding:2px 9px;border-radius:5px;pointer-events:none';
     document.getElementById('map-wrap').appendChild(c);
   }
-  c.textContent=`imagery: VIIRS true color · ${d} · NASA GIBS`;
+  c.textContent=raw?d:`imagery: VIIRS true color · ${d} · NASA GIBS`;
 }
 function toggleTruecolor(){
   if(!show.truecolor){
@@ -2216,31 +2229,48 @@ function toggleTruecolor(){
     TC_HID_MODEL=true;
     show.aqlayer=false; toggleAqLayer(); buildOverlayPanel();
   }
-  TC_DATE=tcWantedDate();
-  map.addSource('truecolor',{type:'raster',tiles:[tcUrl(TC_DATE)],tileSize:256,maxzoom:9,
-    attribution:'Imagery: NASA EOSDIS GIBS'});
-  const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
-  map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
-    paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
-  tcChip(TC_DATE);
+  tcChip('checking imagery availability…',true);
+  tcResolveDate(tcWantedDate()).then(d=>{
+    if(!show.truecolor)return; // user toggled off while probing
+    if(!d){ // nothing published in the last 3 days — bail out honestly
+      show.truecolor=false; buildOverlayPanel(); toggleTruecolor();
+      tcChip(null);
+      return;
+    }
+    TC_DATE=d;
+    if(!map.getSource('truecolor')){
+      map.addSource('truecolor',{type:'raster',tiles:[tcUrl(d)],tileSize:256,maxzoom:9,
+        attribution:'Imagery: NASA EOSDIS GIBS'});
+      const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
+      map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
+        paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
+    }
+    tcChip(d);
+  });
 }
+let TC_SYNCING=false;
 function tcSync(){ // called from refresh(): re-point tiles when the slider crosses a day
-  if(!show.truecolor||!map.getSource('truecolor'))return;
-  const d=tcWantedDate();
-  if(d===TC_DATE)return;
-  TC_DATE=d;
-  const src=map.getSource('truecolor');
-  if(src.setTiles)src.setTiles([tcUrl(d)]);
-  else{ // older MapLibre without setTiles: drop and re-add the layer pair
-    if(map.getLayer('truecolor'))map.removeLayer('truecolor');
-    if(map.getSource('truecolor'))map.removeSource('truecolor');
-    map.addSource('truecolor',{type:'raster',tiles:[tcUrl(d)],tileSize:256,maxzoom:9,
-      attribution:'Imagery: NASA EOSDIS GIBS'});
-    const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
-    map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
-      paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
-  }
-  tcChip(d);
+  if(!show.truecolor||!map.getSource('truecolor')||TC_SYNCING)return;
+  const want=tcWantedDate();
+  if(want===TC_DATE)return;
+  TC_SYNCING=true;
+  tcResolveDate(want).then(d=>{ // probe: never point at an unpublished (black) day
+    TC_SYNCING=false;
+    if(!show.truecolor||!d||d===TC_DATE)return;
+    TC_DATE=d;
+    const src=map.getSource('truecolor'); if(!src)return;
+    if(src.setTiles)src.setTiles([tcUrl(d)]);
+    else{ // older MapLibre without setTiles: drop and re-add the layer pair
+      if(map.getLayer('truecolor'))map.removeLayer('truecolor');
+      if(map.getSource('truecolor'))map.removeSource('truecolor');
+      map.addSource('truecolor',{type:'raster',tiles:[tcUrl(d)],tileSize:256,maxzoom:9,
+        attribution:'Imagery: NASA EOSDIS GIBS'});
+      const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
+      map.addLayer({id:'truecolor',type:'raster',source:'truecolor',
+        paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
+    }
+    tcChip(d);
+  });
 }
 
 /* ---------- HMS smoke plumes (today's analyst-drawn OBSERVATIONS; live cycle only) ---------- */
