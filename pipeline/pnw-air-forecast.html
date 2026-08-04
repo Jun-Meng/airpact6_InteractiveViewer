@@ -2176,24 +2176,28 @@ async function smokeDayCheck(){
   const [hasSmoke,hasFire]=await Promise.all([
     probe('api/overlay?name=smoke'),probe('api/fires?src=goes')]);
   if(!hasSmoke&&!hasFire)return; // clean day: show nothing at all
-  const lbl=[...document.querySelectorAll('#rail .label')].find(el=>el.textContent.trim()==='Overlays');
-  if(lbl&&!document.getElementById('sdBadge')){
-    lbl.insertAdjacentHTML('beforeend',
-      ` <span id="sdBadge" style="background:rgba(185,132,24,.18);border:1px solid #b98418;color:#e8b64c;border-radius:10px;padding:1px 9px;font-size:10px;text-transform:none;letter-spacing:0;font-weight:400"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#e8b64c;margin-right:5px;vertical-align:1px"></span>${hasSmoke?'smoke in the domain today':'fires burning in the domain'}</span>`);
-  }
-  if(dismissed)return; // badge stays as a quiet marker; the card respects the ×
-  OVL_OPEN.obs=true; buildOverlayPanel(); // the toggles we name should be visible below
-  const og=document.getElementById('ovlGroups'); if(!og)return;
   const msg=hasSmoke&&hasFire
     ?'HMS analysts have mapped smoke plumes over the Northwest today, and GOES sees fires burning now.'
     :hasSmoke?'HMS analysts have mapped smoke plumes over the Northwest today.'
     :'GOES sees fires burning in the domain right now.';
-  og.insertAdjacentHTML('beforebegin',
-    `<div id="sdCard" style="background:rgba(185,132,24,.08);border:1px solid rgba(185,132,24,.4);border-radius:8px;padding:8px 24px 8px 10px;margin:6px 0 8px;position:relative;font-size:11px;color:var(--ink);line-height:1.55">${msg} Try the toggles below — smoke plume analysis, the two fire layers, and the daily satellite image — to see where it is and how the forecast handles it.<span id="sdX" title="dismiss for today" style="position:absolute;right:8px;top:6px;color:var(--ink-mute);cursor:pointer">&times;</span></div>`);
-  document.getElementById('sdX').onclick=()=>{
-    try{localStorage.setItem('smokeDay_'+day,'1');}catch(e){}
-    const c=document.getElementById('sdCard'); if(c)c.remove();
+  const showCard=()=>{
+    if(document.getElementById('sdCard'))return;
+    OVL_OPEN.obs=true; buildOverlayPanel(); // the toggles we name should be visible below
+    const og=document.getElementById('ovlGroups'); if(!og)return;
+    og.insertAdjacentHTML('beforebegin',
+      `<div id="sdCard" style="background:rgba(185,132,24,.08);border:1px solid rgba(185,132,24,.4);border-radius:8px;padding:8px 24px 8px 10px;margin:6px 0 8px;position:relative;font-size:11px;color:var(--ink);line-height:1.55">${msg} Try the toggles below — smoke plume analysis, the two satellite fire detection layers, and the daily satellite image — to see where it is and how the forecast handles it.<span id="sdX" title="dismiss for today" style="position:absolute;right:8px;top:6px;color:var(--ink-mute);cursor:pointer">&times;</span></div>`);
+    document.getElementById('sdX').onclick=()=>{
+      try{localStorage.setItem('smokeDay_'+day,'1');}catch(e){}
+      const c=document.getElementById('sdCard'); if(c)c.remove();
+    };
   };
+  const lbl=[...document.querySelectorAll('#rail .label')].find(el=>el.textContent.trim()==='Overlays');
+  if(lbl&&!document.getElementById('sdBadge')){
+    lbl.insertAdjacentHTML('beforeend',
+      ` <span id="sdBadge" title="show details" style="cursor:pointer;background:rgba(185,132,24,.18);border:1px solid #b98418;color:#e8b64c;border-radius:10px;padding:1px 9px;font-size:10px;text-transform:none;letter-spacing:0;font-weight:400"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#e8b64c;margin-right:5px;vertical-align:1px"></span>${hasSmoke?'smoke in the domain today':'fires burning in the domain'}</span>`);
+    document.getElementById('sdBadge').onclick=showCard; // dismissed the card? the badge brings it back
+  }
+  if(!dismissed)showCard();
 }
 
 /* ---------- model layer on/off (pure-observation view when off) ---------- */
