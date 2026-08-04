@@ -1366,7 +1366,11 @@ function queryPoint(lng,lat){
   hideHint();
 }
 map.on('click', e=>{
-  if(CLUSTER_CLICK){CLUSTER_CLICK=false;return;} // cluster zoom-in, not a query
+  // a fire-cluster click means "zoom in" (its own handler does that) — never
+  // open the forecast popup under it. Flag-based suppression raced handler
+  // registration order (bit us 08-03); query the map directly instead.
+  const ids=['fires-cluster','fires-cluster-ic'].filter(id=>map.getLayer(id));
+  if(show.fires&&ids.length&&map.queryRenderedFeatures(e.point,{layers:ids}).length)return;
   queryPoint(e.lngLat.lng,e.lngLat.lat);
 });
 
@@ -2324,7 +2328,7 @@ function toggleSmoke(){
 }
 
 /* ---------- VIIRS fire detections (satellite OBSERVATIONS, last 24 h; live cycle only) ---------- */
-let FIRES=null, CLUSTER_CLICK=false; // {t, data}
+let FIRES=null; // {t, data}
 function drawFlame(name,fill,stroke,innerFill){ // canvas glyph -> symbol image
   if(map.hasImage&&map.hasImage(name))return;
   const s=2,W=18*s,H=20*s;
@@ -2389,7 +2393,6 @@ function toggleFires(){
       map.on('mouseleave','fires-cluster',hideOvTip);
       const clusterClick=e=>{
         const f=e.features&&e.features[0]; if(!f)return;
-        CLUSTER_CLICK=true; // suppress the forecast popup under this click
         map.getSource('fires').getClusterExpansionZoom(f.properties.cluster_id,(err,z)=>{
           if(err)return;
           map.easeTo({center:f.geometry.coordinates,zoom:Math.min(z+0.5,11)});
