@@ -1859,13 +1859,16 @@ function siteClick(s,spOv){
     const when=o.utc?new Date(o.utc+':00Z').toLocaleString('en-US',{timeZone:'America/Los_Angeles',
       month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):'';
     detail=`<div class="pop-v">${(+o.v).toFixed(species==='pm'?1:0)} <span style="font-size:11px;color:var(--ink-mute)">${unit} AIRNOW observed</span></div>
-      <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>`;
+      <p class="pop-t" style="margin:6px 0 0">${when}${aqi>=0?` &middot; AQI ${aqi}`:''}${cat?` &middot; ${esc(cat.name)}`:''}</p>
+      <p class="pop-t" style="margin:7px 0 0;color:var(--ink-faint)">This site lies outside the AIRPACT forecast domain — observations only, no forecast or skill statistics here.</p>`;
   }
   const VB='vbx_'+(++SPARK_SEQ);
   const popup=new maplibregl.Popup({offset:12,closeButton:true,maxWidth:"372px"}).setLngLat([s.lon,s.lat]).setHTML(
-    `<p class="pop-t">${esc(s.name)}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
+    `<p class="pop-t">${esc(s.name)}${(!sp&&s.id)?` <span class="hist-chip" id="hcf_${VB}">site history &rarr;</span>`:''}</p>${detail}${sp?'':`<div id="${VB}" style="display:none"></div>`}`+
     (sp?`<div style="border-top:1px solid var(--line);margin-top:7px;padding-top:6px">${sp.html}</div>`
        :(cat?`<span class="pop-cat" style="background:${rgb(cat.col)}">${cat.name}</span>`:''))).addTo(map);
+  const hcf=document.getElementById('hcf_'+VB);
+  if(hcf)hcf.onclick=()=>{popup.remove();openHistory(s);}; // obs-only history (no model curve out here)
   if(sp){
     sp.wire(popup);
     // pollutant toggle lives on the "forecast time series" row (safely away
