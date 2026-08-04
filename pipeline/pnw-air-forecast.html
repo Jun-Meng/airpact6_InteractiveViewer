@@ -2257,11 +2257,20 @@ function tcChip(d,raw){
   if(!d){if(c)c.remove();return;}
   if(!c){
     c=document.createElement('div'); c.id='tcChip';
-    c.style.cssText='position:absolute;left:10px;bottom:30px;z-index:5;background:rgba(11,15,18,.75);'+
-      'color:var(--ink-mute);font:11px var(--mono,monospace);padding:2px 9px;border-radius:5px;pointer-events:none';
+    c.style.cssText='position:absolute;left:10px;bottom:30px;z-index:5;background:rgba(11,15,18,.8);'+
+      'color:var(--ink-mute);font:11px var(--mono,monospace);padding:4px 10px;border-radius:6px;pointer-events:none;line-height:1.6';
     document.getElementById('map-wrap').appendChild(c);
   }
-  c.textContent=raw?d:`imagery: VIIRS ${TC_SATNAME} true color · ${d} · NASA GIBS`;
+  if(raw){c.textContent=d;return;}
+  const PT='America/Los_Angeles';
+  const ptToday=new Date().toLocaleDateString('sv-SE',{timeZone:PT});
+  // amber "pending" line only when the image is older than today AND the
+  // slider is on today/future — an old date while browsing the archive is
+  // intentional, not pending
+  let want=ptToday; try{want=tcWantedDate();}catch(e){}
+  const pending=d<ptToday&&want>=ptToday;
+  c.innerHTML=`<div>showing: VIIRS <b style="color:#5b9bec">${TC_SATNAME}</b> true color · ${d} · NASA GIBS</div>`
+    +(pending?`<div style="color:#e8b64c">today's image usually arrives by ~4 PM PT</div>`:'');
 }
 function toggleTruecolor(){
   if(!show.truecolor){
