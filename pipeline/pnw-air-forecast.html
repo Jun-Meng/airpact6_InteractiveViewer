@@ -2352,13 +2352,20 @@ const GC_LAYER='GOES-West_ABI_GeoColor';
 function gcUrl(iso){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${iso}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg`;}
 const gcIso=ms=>new Date(ms).toISOString().slice(0,19)+'Z';
 function gcProbe(ms){
+  // threshold looser than the VIIRS probe: GeoColor's smooth gradients
+  // compress small — empty tiles are ~0.6-1 KB, real ones reliably above 1.5
   return fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${gcIso(ms)}/GoogleMapsCompatible_Level8/4/5/2.jpg`)
-    .then(r=>r.ok?r.blob():null).then(b=>!!(b&&b.size>3000)).catch(()=>false);
+    .then(r=>r.ok?r.blob():null).then(b=>!!(b&&b.size>1500)).catch(()=>false);
 }
 async function gcLatest(){ // newest published 10-min frame (GIBS runs ~15-25 min behind)
-  let t=Math.floor(Date.now()/600e3)*600e3;
-  for(let k=0;k<9;k++){ if(await gcProbe(t-k*600e3))return t-k*600e3; }
-  return null;
+  const t=Math.floor(Date.now()/600e3)*600e3;
+  const slots=[]; for(let k=0;k<9;k++)slots.push(t-k*600e3);
+  const ok=await Promise.all(slots.map(gcProbe)); // parallel: one probe's latency, not nine
+  for(let k=0;k<slots.length;k++)if(ok[k])return slots[k];
+  // probes inconclusive (threshold or transient): fall back to a ~40-min-old
+  // frame rather than presenting a dead toggle — GIBS is virtually always
+  // published by then, and the card states the frame's age regardless
+  return t-2400e3;
 }
 function gcStop(){if(GC_TIMER){clearInterval(GC_TIMER);GC_TIMER=null;}
   const b=document.getElementById('gcPlay'); if(b)b.innerHTML='&#9654;';}
@@ -2386,9 +2393,8 @@ async function toggleGeocolor(){
   }
   if(show.truecolor){show.truecolor=false;toggleTruecolor();} // one imagery basemap at a time
   if(show.aqlayer){GC_HID_MODEL=true;show.aqlayer=false;toggleAqLayer();buildOverlayPanel();}
-  const latest=await gcLatest();
+  const latest=await gcLatest(); // always returns a frame (fallback ~40 min old)
   if(!show.geocolor)return; // toggled off while probing
-  if(!latest){ show.geocolor=false; buildOverlayPanel(); toggleGeocolor(); return; }
   GC_FRAMES=[]; for(let k=11;k>=0;k--)GC_FRAMES.push(latest-k*1800e3);
   if(!map.getSource('geocolor')){
     map.addSource('geocolor',{type:'raster',tiles:[gcUrl(gcIso(latest))],tileSize:256,maxzoom:8,
