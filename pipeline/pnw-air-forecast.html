@@ -829,8 +829,8 @@ const OVL_GROUPS=[
   {id:'fc',name:'Model forecast',hint:'The AIRPACT-6 forecast — model results, not measurements',open:true,items:[
     ['aqlayer','AIRPACT-6 surface layer']]},
   {id:'obs',name:'Observations',hint:'satellite + monitor data — not forecast',open:true,items:[
-    ['monitors','Monitor sites (obs)'],['smoke','Smoke plumes (HMS today)'],['fires','Fires past 24 h (VIIRS)'],
-    ['goesfires','Burning now (GOES)'],['truecolor','Satellite true color (daily)']]},
+    ['monitors','Monitor sites (AirNow)'],['smoke','Smoke plume analysis (HMS)'],['fires','Fires past 24 h (VIIRS)'],
+    ['goesfires','Burning now (GOES)'],['truecolor','Daily satellite image (VIIRS)']]},
   {id:'ref',name:'Reference layers',hint:'',open:false,items:[
     ['states','State lines'],['counties','County lines'],
     ['class1','Class I areas'],['tribal','Tribal lands'],['grid','Model grid (~4 km)']]},
@@ -2171,12 +2171,7 @@ function toggleAqLayer(){
    slider is the "see the smoke through the forecast" control. The imagery
    date follows the time slider's day, clamped to the newest available image
    (today's VIIRS pass is typically published by mid-afternoon PT). */
-let TC_DATE=null, TC_PREV_OP=null;
-function tcSetOpacity(pct){ // drive the existing slider so UI + layer stay in sync
-  const sl=document.getElementById('opacity');
-  sl.value=pct;
-  sl.dispatchEvent(new Event('input'));
-}
+let TC_DATE=null, TC_HID_MODEL=false;
 function tcAvailableToday(){ // heuristic: overpass ~13:30 PT + ~1.5 h processing
   return +new Date().toLocaleTimeString('en-US',{hour:'2-digit',hour12:false,timeZone:'America/Los_Angeles'})>=15;
 }
@@ -2208,13 +2203,19 @@ function toggleTruecolor(){
     if(map.getLayer('truecolor'))map.removeLayer('truecolor');
     if(map.getSource('truecolor'))map.removeSource('truecolor');
     TC_DATE=null; tcChip(null);
-    if(TC_PREV_OP!=null){tcSetOpacity(TC_PREV_OP);TC_PREV_OP=null;} // restore
+    if(TC_HID_MODEL&&!show.aqlayer){ // restore the model layer we auto-hid
+      show.aqlayer=true; toggleAqLayer(); buildOverlayPanel();
+    }
+    TC_HID_MODEL=false;
     return;
   }
-  // the forecast raster at default opacity buries the imagery — drop it to a
-  // see-through level automatically (user can still fine-tune; restored on off)
-  const sl=document.getElementById('opacity');
-  if(+sl.value>45){TC_PREV_OP=+sl.value;tcSetOpacity(35);}
+  // SEPARATION, not blending: a translucent warm forecast over gray-beige
+  // smoke camouflages both (tried 35% opacity — still unreadable). Imagery on
+  // = model layer off; the Model forecast toggle flips the comparison.
+  if(show.aqlayer){
+    TC_HID_MODEL=true;
+    show.aqlayer=false; toggleAqLayer(); buildOverlayPanel();
+  }
   TC_DATE=tcWantedDate();
   map.addSource('truecolor',{type:'raster',tiles:[tcUrl(TC_DATE)],tileSize:256,maxzoom:9,
     attribution:'Imagery: NASA EOSDIS GIBS'});
