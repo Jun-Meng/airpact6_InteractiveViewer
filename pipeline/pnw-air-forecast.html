@@ -2347,15 +2347,27 @@ function tcSync(){ // called from refresh(): re-point tiles when the slider cros
    Geostationary: sub-daily smoke evolution at ~1-2 km (slant view up north).
    Frames are half-hour steps; the mini-timeline is independent of the
    forecast slider — that one is the future, this one is the recent past. */
-let GC_FRAMES=[],GC_IDX=0,GC_TIMER=null,GC_HID_MODEL=false;
+let GC_FRAMES=[],GC_IDX=0,GC_TIMER=null,GC_HID_MODEL=false,GC_LEVEL=null;
 const GC_LAYER='GOES-West_ABI_GeoColor';
-function gcUrl(iso){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${iso}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg`;}
+function gcUrl(iso){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${iso}/GoogleMapsCompatible_Level${GC_LEVEL}/{z}/{y}/{x}.jpg`;}
 const gcIso=ms=>new Date(ms).toISOString().slice(0,19)+'Z';
-function gcProbe(ms){
+function gcProbeAt(ms,level){
   // threshold looser than the VIIRS probe: GeoColor's smooth gradients
   // compress small — empty tiles are ~0.6-1 KB, real ones reliably above 1.5
-  return fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${gcIso(ms)}/GoogleMapsCompatible_Level8/4/5/2.jpg`)
+  return fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${gcIso(ms)}/GoogleMapsCompatible_Level${level}/4/5/2.jpg`)
     .then(r=>r.ok?r.blob():null).then(b=>!!(b&&b.size>1500)).catch(()=>false);
+}
+const gcProbe=ms=>gcProbeAt(ms,GC_LEVEL);
+async function gcFindLevel(){
+  // GIBS matrix level depends on native resolution (250m=L9 … 2km=L6) and my
+  // Level8 guess got 400s in prod (2026-08-04) — discover it instead of
+  // guessing, against a frame old enough to certainly be published
+  if(GC_LEVEL)return true;
+  const t=Math.floor(Date.now()/600e3)*600e3-3600e3;
+  for(const L of [7,8,6,9]){
+    if(await gcProbeAt(t,L)){GC_LEVEL=L;return true;}
+  }
+  return false;
 }
 async function gcLatest(){ // newest published 10-min frame (GIBS runs ~15-25 min behind)
   const t=Math.floor(Date.now()/600e3)*600e3;
@@ -2393,11 +2405,14 @@ async function toggleGeocolor(){
   }
   if(show.truecolor){show.truecolor=false;toggleTruecolor();} // one imagery basemap at a time
   if(show.aqlayer){GC_HID_MODEL=true;show.aqlayer=false;toggleAqLayer();buildOverlayPanel();}
+  if(!await gcFindLevel()){ // no matrix level answers: bail visibly, restore model
+    show.geocolor=false; buildOverlayPanel(); toggleGeocolor(); return;
+  }
   const latest=await gcLatest(); // always returns a frame (fallback ~40 min old)
   if(!show.geocolor)return; // toggled off while probing
   GC_FRAMES=[]; for(let k=11;k>=0;k--)GC_FRAMES.push(latest-k*1800e3);
   if(!map.getSource('geocolor')){
-    map.addSource('geocolor',{type:'raster',tiles:[gcUrl(gcIso(latest))],tileSize:256,maxzoom:8,
+    map.addSource('geocolor',{type:'raster',tiles:[gcUrl(gcIso(latest))],tileSize:256,maxzoom:GC_LEVEL,
       attribution:'Imagery: NOAA GOES-West via NASA GIBS'});
     const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
     map.addLayer({id:'geocolor',type:'raster',source:'geocolor',
