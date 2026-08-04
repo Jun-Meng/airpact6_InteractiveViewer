@@ -2214,16 +2214,26 @@ function toggleAqLayer(){
    date follows the time slider's day, clamped to the newest available image
    (today's VIIRS pass is typically published by mid-afternoon PT). */
 let TC_DATE=null, TC_HID_MODEL=false;
+// prefer the healthy afternoon-orbit satellites; S-NPP (14+ yrs old, drifted
+// orbit) increasingly has gaps/lag in GIBS — it stranded us on 2-day-old
+// imagery on 2026-08-04, hence the multi-satellite probe
+const TC_SATS=[
+  ['VIIRS_NOAA21_CorrectedReflectance_TrueColor','NOAA-21'],
+  ['VIIRS_NOAA20_CorrectedReflectance_TrueColor','NOAA-20'],
+  ['VIIRS_SNPP_CorrectedReflectance_TrueColor','S-NPP']];
+let TC_LAYER=TC_SATS[0][0], TC_SATNAME=TC_SATS[0][1];
 async function tcResolveDate(want){
   // GIBS serves valid-but-BLACK tiles for unpublished dates (no 404), so
-  // probe a PNW land tile and walk back until real imagery appears: black
-  // JPEGs are ~1-2 KB, real scenes tens of KB.
+  // probe a PNW land tile: black JPEGs are ~1-2 KB, real scenes tens of KB.
+  // Walk newest date -> older, best satellite -> worse, take the first hit.
   for(let k=0;k<3;k++){
     const d=new Date(Date.parse(want+'T12:00:00Z')-k*86400e3).toISOString().slice(0,10);
-    try{
-      const r=await fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/5/11/5.jpg`);
-      if(r.ok&&(await r.blob()).size>3000)return d;
-    }catch(e){}
+    for(const [layer,sat] of TC_SATS){
+      try{
+        const r=await fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${d}/GoogleMapsCompatible_Level9/5/11/5.jpg`);
+        if(r.ok&&(await r.blob()).size>3000){TC_LAYER=layer;TC_SATNAME=sat;return d;}
+      }catch(e){}
+    }
   }
   return null;
 }
@@ -2240,7 +2250,7 @@ function tcWantedDate(){
   return want>latest?latest:want;
 }
 function tcUrl(d){
-  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+  return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${TC_LAYER}/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
 }
 function tcChip(d,raw){
   let c=document.getElementById('tcChip');
@@ -2251,7 +2261,7 @@ function tcChip(d,raw){
       'color:var(--ink-mute);font:11px var(--mono,monospace);padding:2px 9px;border-radius:5px;pointer-events:none';
     document.getElementById('map-wrap').appendChild(c);
   }
-  c.textContent=raw?d:`imagery: VIIRS true color · ${d} · NASA GIBS`;
+  c.textContent=raw?d:`imagery: VIIRS ${TC_SATNAME} true color · ${d} · NASA GIBS`;
 }
 function toggleTruecolor(){
   if(!show.truecolor){
