@@ -2352,26 +2352,27 @@ function tcSync(){ // called from refresh(): re-point tiles when the slider cros
    Geostationary: sub-daily smoke evolution at ~1-2 km (slant view up north).
    Frames are half-hour steps; the mini-timeline is independent of the
    forecast slider — that one is the future, this one is the recent past. */
-let GC_FRAMES=[],GC_IDX=0,GC_TIMER=null,GC_HID_MODEL=false,GC_LEVEL=null;
+let GC_FRAMES=[],GC_IDX=0,GC_TIMER=null,GC_HID_MODEL=false,GC_LEVEL=null,GC_EXT='png';
 const GC_LAYER='GOES-West_ABI_GeoColor';
-function gcUrl(iso){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${iso}/GoogleMapsCompatible_Level${GC_LEVEL}/{z}/{y}/{x}.jpg`;}
+function gcUrl(iso){return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${iso}/GoogleMapsCompatible_Level${GC_LEVEL}/{z}/{y}/{x}.${GC_EXT}`;}
 const gcIso=ms=>new Date(ms).toISOString().slice(0,19)+'Z';
-function gcProbeAt(ms,level){
-  // threshold looser than the VIIRS probe: GeoColor's smooth gradients
-  // compress small — empty tiles are ~0.6-1 KB, real ones reliably above 1.5
-  return fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${gcIso(ms)}/GoogleMapsCompatible_Level${level}/4/5/2.jpg`)
+function gcProbeAt(ms,level,ext){
+  // real tiles are reliably >1.5 KB; empty/transparent ones are tiny
+  return fetch(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${GC_LAYER}/default/${gcIso(ms)}/GoogleMapsCompatible_Level${level}/4/5/2.${ext||GC_EXT}`)
     .then(r=>r.ok?r.blob():null).then(b=>!!(b&&b.size>1500)).catch(()=>false);
 }
-const gcProbe=ms=>gcProbeAt(ms,GC_LEVEL);
+const gcProbe=ms=>gcProbeAt(ms,GC_LEVEL,GC_EXT);
 async function gcFindLevel(){
-  // GIBS matrix level depends on native resolution (250m=L9 … 2km=L6) and my
-  // Level8 guess got 400s in prod (2026-08-04) — discover it instead of
-  // guessing, against a frame old enough to certainly be published
+  // Learned the hard way (prod, 08-04): wrong matrix level → 400 XML; right
+  // level with wrong EXTENSION → 404 HTML (GeoColor is disk-limited, so its
+  // tiles need transparency ⇒ png, unlike the jpg VIIRS layers). Probe
+  // (level × extension) in parallel once and keep the pair that answers.
   if(GC_LEVEL)return true;
   const t=Math.floor(Date.now()/600e3)*600e3-3600e3;
-  for(const L of [7,8,6,9]){
-    if(await gcProbeAt(t,L)){GC_LEVEL=L;return true;}
-  }
+  const combos=[];
+  for(const ext of ['png','jpg'])for(const L of [6,7,8,9,10,11,12,13])combos.push([L,ext]);
+  const ok=await Promise.all(combos.map(([L,ext])=>gcProbeAt(t,L,ext)));
+  for(let k=0;k<combos.length;k++)if(ok[k]){GC_LEVEL=combos[k][0];GC_EXT=combos[k][1];return true;}
   return false;
 }
 async function gcLatest(){ // newest published 10-min frame (GIBS runs ~15-25 min behind)
