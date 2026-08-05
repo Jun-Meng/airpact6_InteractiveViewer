@@ -2277,7 +2277,12 @@ function tcChip(d,raw){
       :new Date(DATA.epoch(hour)).toLocaleDateString('sv-SE',{timeZone:PT});
   }catch(e){}
   const pending=d<ptToday&&want>=ptToday;
-  c.innerHTML=`<div>showing: VIIRS <b style="color:#5b9bec">${TC_SATNAME}</b> true color · ${d} · NASA GIBS</div>`
+  // approx overpass in local CLOCK time: ~13:25 local SOLAR crossing ≈ +1 h
+  // on the clock during PDT (domain ref. lon ~120°W); S-NPP has drifted later.
+  // GIBS daily composites carry no per-pixel time, hence the tilde.
+  const pdt=new Date().toLocaleTimeString('en-US',{timeZone:'America/Los_Angeles',timeZoneName:'short'}).includes('PDT');
+  const op=TC_SATNAME==='S-NPP'?(pdt?'~3:00 PM PDT':'~2:00 PM PST'):(pdt?'~2:25 PM PDT':'~1:25 PM PST');
+  c.innerHTML=`<div>showing: VIIRS <b style="color:#5b9bec">${TC_SATNAME}</b> true color · ${d} · ${op} overpass · NASA GIBS</div>`
     +(pending?`<div style="color:#e8b64c">today's image usually arrives by ~4 PM PT</div>`:'');
 }
 function toggleTruecolor(){
