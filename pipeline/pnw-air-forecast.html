@@ -2386,13 +2386,18 @@ async function gcLatest(){ // newest published 10-min frame (GIBS runs ~15-25 mi
 }
 function gcStop(){if(GC_TIMER){clearInterval(GC_TIMER);GC_TIMER=null;}
   const b=document.getElementById('gcPlay'); if(b)b.innerHTML='&#9654;';}
+function gcLayerIds(){return GC_FRAMES.map((_,i)=>'geocolor-'+i);}
 function gcSetFrame(i){
+  // frames are 12 separate always-rendering layers; animation flips opacity.
+  // (v1 swapped tile URLs on one source — each 700 ms swap ABORTED the
+  // previous frame's downloads, so playback went blank and stayed blank.)
   GC_IDX=Math.max(0,Math.min(GC_FRAMES.length-1,i));
-  const ms=GC_FRAMES[GC_IDX];
-  const src=map.getSource('geocolor');
-  if(src&&src.setTiles)src.setTiles([gcUrl(gcIso(ms))]);
+  GC_FRAMES.forEach((_,k)=>{
+    const id='geocolor-'+k;
+    if(map.getLayer(id))map.setPaintProperty(id,'raster-opacity',k===GC_IDX?1:0);
+  });
   const s=document.getElementById('gcScrub'); if(s)s.value=GC_IDX;
-  const ti=ptTimeInfo(new Date(ms));
+  const ti=ptTimeInfo(new Date(GC_FRAMES[GC_IDX]));
   const tl=document.getElementById('gcTime'); if(tl)tl.textContent=`${ti.time12} ${ti.tz}`;
   const age=Math.round((Date.now()-GC_FRAMES[GC_FRAMES.length-1])/60e3);
   const n=document.getElementById('gcNote');
@@ -2401,8 +2406,10 @@ function gcSetFrame(i){
 async function toggleGeocolor(){
   if(!show.geocolor){
     gcStop();
-    if(map.getLayer('geocolor'))map.removeLayer('geocolor');
-    if(map.getSource('geocolor'))map.removeSource('geocolor');
+    gcLayerIds().forEach(id=>{
+      if(map.getLayer(id))map.removeLayer(id);
+      if(map.getSource(id))map.removeSource(id);
+    });
     const c=document.getElementById('gcCard'); if(c)c.remove();
     if(GC_HID_MODEL&&!show.aqlayer){show.aqlayer=true;toggleAqLayer();buildOverlayPanel();}
     GC_HID_MODEL=false; GC_FRAMES=[];
@@ -2416,12 +2423,18 @@ async function toggleGeocolor(){
   const latest=await gcLatest(); // always returns a frame (fallback ~40 min old)
   if(!show.geocolor)return; // toggled off while probing
   GC_FRAMES=[]; for(let k=11;k>=0;k--)GC_FRAMES.push(latest-k*1800e3);
-  if(!map.getSource('geocolor')){
-    map.addSource('geocolor',{type:'raster',tiles:[gcUrl(gcIso(latest))],tileSize:256,maxzoom:GC_LEVEL,
-      attribution:'Imagery: NOAA GOES-West via NASA GIBS'});
+  { // one always-rendering layer per frame (opacity 0) so every frame's tiles
+    // load once, in parallel, and playback is pure opacity flips
     const layers=map.getStyle().layers, i=layers.findIndex(l=>l.id==='base');
-    map.addLayer({id:'geocolor',type:'raster',source:'geocolor',
-      paint:{'raster-fade-duration':0}},(i>=0&&layers[i+1])?layers[i+1].id:undefined);
+    const beforeId=(i>=0&&layers[i+1])?layers[i+1].id:undefined;
+    GC_FRAMES.forEach((ms,k)=>{
+      const id='geocolor-'+k;
+      if(map.getSource(id))return;
+      map.addSource(id,{type:'raster',tiles:[gcUrl(gcIso(ms))],tileSize:256,maxzoom:GC_LEVEL,
+        attribution:'Imagery: NOAA GOES-West via NASA GIBS'});
+      map.addLayer({id,type:'raster',source:id,
+        paint:{'raster-opacity':0,'raster-fade-duration':0}},beforeId);
+    });
   }
   if(!document.getElementById('gcCard')){
     const c=document.createElement('div'); c.id='gcCard';
