@@ -438,7 +438,7 @@
         <a href="about.html" style="color:#2f6fd0;text-decoration:none">About &rarr;</a>
         <a href="verify.html" style="color:#2f6fd0;text-decoration:none;margin-left:11px">Model Performance &rarr;</a>
         <a href="data.html" style="color:#2f6fd0;text-decoration:none;margin-left:11px">Data &rarr;</a></p>
-      <span class="demo-badge">Synthetic demo data</span>
+      <span class="demo-badge">Loading forecast&hellip;</span>
     </div>
 
     <div class="section" id="secLayer">
@@ -700,6 +700,8 @@ async function initData(){
       return;
     }catch(e){ console.warn('Live data load failed; using demo.',e); banner('Live data unavailable — showing demo'); }
   }
+  // only NOW is the synthetic claim true (no embedded data, no live data)
+  const db=document.querySelector('.demo-badge'); if(db)db.textContent='Synthetic demo data';
   buildSyntheticData();
 }
 /* fetch a packed grid: prefer the gzipped copy (.bin.gz, ~1/3 the bytes),
